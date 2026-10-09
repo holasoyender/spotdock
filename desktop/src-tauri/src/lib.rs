@@ -2,6 +2,7 @@
 mod discovery;
 mod dock;
 mod media;
+mod spotify_web;
 
 use axum::{
     Router,
@@ -47,6 +48,14 @@ struct Snapshot {
     accent: String,
     config: dock::DockConfig,
     weather: Option<dock::Weather>,
+    media: MediaStatus,
+}
+
+#[derive(Clone, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+struct MediaStatus {
+    source: String,
+    message: Option<String>,
 }
 
 struct Shared {
@@ -56,6 +65,7 @@ struct Shared {
     accent: RwLock<String>,
     config: RwLock<dock::DockConfig>,
     weather: RwLock<Option<dock::Weather>>,
+    media_status: RwLock<MediaStatus>,
     config_path: OnceLock<PathBuf>,
     refresh_weather: Notify,
     updates: broadcast::Sender<String>,
@@ -75,7 +85,7 @@ struct Auth {
     token: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum Control {
     PlayPause,
@@ -131,6 +141,26 @@ async fn rotate_pairing(shared: tauri::State<'_, Arc<Shared>>) -> Result<Pairing
 #[tauri::command]
 async fn get_snapshot(shared: tauri::State<'_, Arc<Shared>>) -> Result<Snapshot, String> {
     Ok(snapshot(&shared).await)
+}
+
+#[tauri::command]
+async fn get_spotify_status() -> Result<spotify_web::AuthStatus, String> {
+    spotify_web::status().await
+}
+
+#[tauri::command]
+async fn connect_spotify(client_id: String) -> Result<(), String> {
+    spotify_web::begin_auth(client_id).await
+}
+
+#[tauri::command]
+async fn disconnect_spotify() -> Result<(), String> {
+    spotify_web::disconnect().await
+}
+
+#[tauri::command]
+fn open_spotify_developer_dashboard() -> Result<(), String> {
+    dock::shell_open("https://developer.spotify.com/dashboard")
 }
 
 #[tauri::command]
@@ -224,6 +254,7 @@ async fn snapshot(shared: &Shared) -> Snapshot {
         accent: shared.accent.read().await.clone(),
         config: shared.config.read().await.clone(),
         weather: shared.weather.read().await.clone(),
+        media: shared.media_status.read().await.clone(),
     }
 }
 
@@ -350,6 +381,7 @@ pub fn run() {
         accent: RwLock::new("#b8ef64".into()),
         config: RwLock::new(dock::DockConfig::default()),
         weather: RwLock::new(None),
+        media_status: RwLock::new(MediaStatus::default()),
         config_path: OnceLock::new(),
         refresh_weather: Notify::new(),
         updates,
@@ -360,6 +392,7 @@ pub fn run() {
         .manage(shared.clone())
         .setup(move |app| {
             let path = dock::config_path(&app.path().app_config_dir().map_err(|err| err.to_string())?);
+            spotify_web::init(path.with_file_name("spotify.json"));
             let saved = dock::load(&path);
             dock::save(&path, &saved)?;
             let _ = shared.config_path.set(path);
@@ -386,14 +419,21 @@ pub fn run() {
             });
             tauri::async_runtime::spawn(async move {
                 loop {
-                    let next = media::read_track().await.unwrap_or_default();
+                    let result = media::read_track().await;
+                    let (next, media_status) = match result {
+                        Ok((track, source, message)) => (track, MediaStatus { source: source.into(), message }),
+                        Err(error) => (Track::default(), MediaStatus { source: "none".into(), message: Some(error) }),
+                    };
                     let shared = app_handle.state::<Arc<Shared>>();
                     let previous = shared.track.read().await.clone();
+                    let media_changed = *shared.media_status.read().await != media_status;
+                    if media_changed { *shared.media_status.write().await = media_status; }
                     if previous != next {
                         let artwork_changed = previous.artwork != next.artwork;
                         *shared.track.write().await = next;
-                        publish_track(&shared, &app_handle, artwork_changed).await;
+                        if !media_changed { publish_track(&shared, &app_handle, artwork_changed).await; }
                     }
+                    if media_changed { publish(&shared, &app_handle).await; }
                     tokio::time::sleep(Duration::from_millis(900)).await;
                 }
             });
@@ -403,6 +443,10 @@ pub fn run() {
             get_pairing,
             rotate_pairing,
             get_snapshot,
+            get_spotify_status,
+            connect_spotify,
+            disconnect_spotify,
+            open_spotify_developer_dashboard,
             control,
             set_accent,
             set_dock_config,

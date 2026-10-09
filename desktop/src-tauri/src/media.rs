@@ -1,4 +1,7 @@
-use crate::{Control, Track};
+use crate::{Control, Track, spotify_web};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+static PREFER_WEB: AtomicBool = AtomicBool::new(false);
 
 #[cfg(target_os = "windows")]
 mod windows_media {
@@ -23,6 +26,9 @@ mod windows_media {
             .join()
             .map_err(|e| e.to_string())?;
         let sessions = manager.GetSessions().map_err(|e| e.to_string())?;
+        let mut first = None;
+        let mut with_metadata = None;
+        let mut sources = Vec::new();
         for index in 0..sessions.Size().map_err(|e| e.to_string())? {
             let session = sessions.GetAt(index).map_err(|e| e.to_string())?;
             let source = session
@@ -30,11 +36,41 @@ mod windows_media {
                 .map_err(|e| e.to_string())?
                 .to_string()
                 .to_ascii_lowercase();
+            sources.push(source.clone());
             if source.contains("spotify") {
-                return Ok(session);
+                if first.is_none() {
+                    first = Some(session.clone());
+                }
+                let playing = session
+                    .GetPlaybackInfo()
+                    .ok()
+                    .and_then(|info| info.PlaybackStatus().ok())
+                    == Some(GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing);
+                let has_title = session
+                    .TryGetMediaPropertiesAsync()
+                    .ok()
+                    .and_then(|operation| operation.join().ok())
+                    .and_then(|media| media.Title().ok())
+                    .is_some_and(|title| !title.is_empty());
+                if has_title {
+                    if playing {
+                        return Ok(session);
+                    }
+                    if with_metadata.is_none() {
+                        with_metadata = Some(session);
+                    }
+                }
             }
         }
-        Err("Spotify no está publicando una sesión multimedia de Windows".into())
+        with_metadata
+            .or(first)
+            .ok_or_else(|| {
+                if sources.is_empty() {
+                    "Windows no muestra ninguna sesión multimedia; comprueba que Spotify esté reproduciendo".into()
+                } else {
+                    format!("Spotify no aparece entre las sesiones multimedia de Windows ({})", sources.join(", "))
+                }
+            })
     }
 
     pub async fn read_track() -> Result<Track, String> {
@@ -44,31 +80,46 @@ mod windows_media {
             .map_err(|e| e.to_string())?
             .join()
             .map_err(|e| e.to_string())?;
-        let playback = session.GetPlaybackInfo().map_err(|e| e.to_string())?;
-        let timeline = session.GetTimelineProperties().map_err(|e| e.to_string())?;
+        let playback = session.GetPlaybackInfo().ok();
+        let timeline = session.GetTimelineProperties().ok();
         let repeat = match playback
-            .AutoRepeatMode()
-            .ok()
+            .as_ref()
+            .and_then(|info| info.AutoRepeatMode().ok())
             .and_then(|value| value.Value().ok())
         {
             Some(MediaPlaybackAutoRepeatMode::Track) => "track",
             Some(MediaPlaybackAutoRepeatMode::List) => "all",
             _ => "off",
         };
-        let playing = playback.PlaybackStatus().map_err(|e| e.to_string())?
-            == GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing;
-        let duration_ms = timeline.EndTime().map_err(|e| e.to_string())?.Duration / 10_000;
-        let base_position_ms = timeline.Position().map_err(|e| e.to_string())?.Duration / 10_000;
+        let playing = playback
+            .as_ref()
+            .and_then(|info| info.PlaybackStatus().ok())
+            == Some(GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing);
+        let duration_ms = timeline
+            .as_ref()
+            .and_then(|timeline| timeline.EndTime().ok())
+            .map(|time| time.Duration / 10_000)
+            .unwrap_or(0);
+        let base_position_ms = timeline
+            .as_ref()
+            .and_then(|timeline| timeline.Position().ok())
+            .map(|time| time.Duration / 10_000)
+            .unwrap_or(0);
         let elapsed_ms = if playing {
             let updated = timeline
-                .LastUpdatedTime()
-                .map_err(|e| e.to_string())?
-                .UniversalTime;
+                .as_ref()
+                .and_then(|timeline| timeline.LastUpdatedTime().ok())
+                .map(|time| time.UniversalTime)
+                .unwrap_or(0);
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_millis() as i64;
-            (now - (updated / 10_000 - 11_644_473_600_000)).clamp(0, 60_000)
+            if updated > 0 {
+                (now - (updated / 10_000 - 11_644_473_600_000)).clamp(0, 60_000)
+            } else {
+                0
+            }
         } else {
             0
         };
@@ -92,22 +143,32 @@ mod windows_media {
             Some(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
         }
         .await;
-        Ok(Track {
+        let track = Track {
             title: media.Title().map_err(|e| e.to_string())?.to_string(),
-            artist: media.Artist().map_err(|e| e.to_string())?.to_string(),
-            album: media.AlbumTitle().map_err(|e| e.to_string())?.to_string(),
+            artist: media
+                .Artist()
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            album: media
+                .AlbumTitle()
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
             artwork,
             position_ms: (base_position_ms + elapsed_ms).clamp(0, duration_ms.max(0)),
             duration_ms,
             playing,
             shuffle: playback
-                .IsShuffleActive()
-                .ok()
+                .as_ref()
+                .and_then(|info| info.IsShuffleActive().ok())
                 .and_then(|value| value.Value().ok())
                 .unwrap_or(false),
             repeat: repeat.into(),
             available: true,
-        })
+        };
+        if track.title.trim().is_empty() {
+            return Err("La sesión multimedia de Spotify no contiene una canción".into());
+        }
+        Ok(track)
     }
 
     pub async fn control(action: Control) -> Result<(), String> {
@@ -135,14 +196,53 @@ mod windows_media {
     }
 }
 
-#[cfg(target_os = "windows")]
-pub use windows_media::{control, read_track};
-
-#[cfg(not(target_os = "windows"))]
-pub async fn read_track() -> Result<Track, String> {
-    Err("La integración con Spotify requiere Windows".into())
+pub async fn read_track() -> Result<(Track, &'static str, Option<String>), String> {
+    #[cfg(target_os = "windows")]
+    let local = windows_media::read_track().await;
+    #[cfg(not(target_os = "windows"))]
+    let local: Result<Track, String> = Err("La integración local requiere Windows".into());
+    match local {
+        Ok(track) => {
+            PREFER_WEB.store(false, Ordering::Relaxed);
+            Ok((track, "windows", None))
+        }
+        Err(windows_error) => match spotify_web::read_track().await {
+            Ok(track) => {
+                PREFER_WEB.store(true, Ordering::Relaxed);
+                Ok((track, "spotify_api", Some(windows_error)))
+            }
+            Err(api_error) => {
+                PREFER_WEB.store(false, Ordering::Relaxed);
+                Err(format!(
+                    "Windows: {windows_error}. API de Spotify: {api_error}"
+                ))
+            }
+        },
+    }
 }
-#[cfg(not(target_os = "windows"))]
-pub async fn control(_: Control) -> Result<(), String> {
-    Err("La integración con Spotify requiere Windows".into())
+
+pub async fn control(action: Control) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    async fn local(action: Control) -> Result<(), String> {
+        windows_media::control(action).await
+    }
+    #[cfg(not(target_os = "windows"))]
+    async fn local(_: Control) -> Result<(), String> {
+        Err("Los controles locales requieren Windows".into())
+    }
+    if PREFER_WEB.load(Ordering::Relaxed) {
+        match spotify_web::control(action.clone()).await {
+            Ok(()) => Ok(()),
+            Err(web_error) => local(action).await.map_err(|local_error| {
+                format!("API de Spotify: {web_error}. Windows: {local_error}")
+            }),
+        }
+    } else {
+        match local(action.clone()).await {
+            Ok(()) => Ok(()),
+            Err(local_error) => spotify_web::control(action).await.map_err(|web_error| {
+                format!("Windows: {local_error}. API de Spotify: {web_error}")
+            }),
+        }
+    }
 }

@@ -415,7 +415,7 @@ fn send_shortcut(_: &str) -> Result<(), String> {
 }
 
 #[cfg(target_os = "windows")]
-fn shell_open(value: &str) -> Result<(), String> {
+pub(crate) fn shell_open(value: &str) -> Result<(), String> {
     use windows::Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL};
     use windows::core::{HSTRING, PCWSTR, w};
     let target = HSTRING::from(value);
@@ -436,7 +436,7 @@ fn shell_open(value: &str) -> Result<(), String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn shell_open(_: &str) -> Result<(), String> {
+pub(crate) fn shell_open(_: &str) -> Result<(), String> {
     Err("Esta acción requiere Windows".into())
 }
 
