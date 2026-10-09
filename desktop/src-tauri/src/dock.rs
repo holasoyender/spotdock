@@ -197,6 +197,12 @@ pub struct Weather {
 pub struct SavedState {
     pub accent: String,
     pub config: DockConfig,
+    #[serde(default = "new_pairing_token")]
+    pub pairing_token: String,
+}
+
+pub fn new_pairing_token() -> String {
+    Uuid::new_v4().simple().to_string()
 }
 
 impl Default for SavedState {
@@ -204,6 +210,7 @@ impl Default for SavedState {
         Self {
             accent: "#b8ef64".into(),
             config: DockConfig::default(),
+            pairing_token: new_pairing_token(),
         }
     }
 }
@@ -216,7 +223,15 @@ pub fn load(path: &Path) -> SavedState {
     std::fs::read_to_string(path)
         .ok()
         .and_then(|data| serde_json::from_str::<SavedState>(&data).ok())
-        .filter(|saved| is_hex(&saved.accent) && saved.config.validate().is_ok())
+        .filter(|saved| {
+            is_hex(&saved.accent)
+                && saved.config.validate().is_ok()
+                && saved.pairing_token.len() == 32
+                && saved
+                    .pairing_token
+                    .bytes()
+                    .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        })
         .unwrap_or_default()
 }
 
@@ -461,6 +476,19 @@ pub async fn execute(button: &DeckButton) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn old_configuration_gets_a_persistent_pairing_token() {
+        let old = serde_json::json!({
+            "accent": "#b8ef64",
+            "config": DockConfig::default(),
+        });
+        let upgraded: SavedState = serde_json::from_value(old).unwrap();
+        assert_eq!(upgraded.pairing_token.len(), 32);
+        let restored: SavedState =
+            serde_json::from_str(&serde_json::to_string(&upgraded).unwrap()).unwrap();
+        assert_eq!(restored.pairing_token, upgraded.pairing_token);
+    }
 
     #[test]
     fn configured_actions_reject_unsafe_or_invalid_targets() {

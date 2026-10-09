@@ -1,3 +1,5 @@
+#[path = "../../../shared/discovery.rs"]
+mod discovery;
 mod dock;
 mod media;
 
@@ -20,7 +22,6 @@ use std::{
 };
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{Notify, RwLock, broadcast};
-use uuid::Uuid;
 
 #[derive(Clone, Default, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -122,7 +123,8 @@ async fn get_pairing(shared: tauri::State<'_, Arc<Shared>>) -> Result<PairingInf
 
 #[tauri::command]
 async fn rotate_pairing(shared: tauri::State<'_, Arc<Shared>>) -> Result<PairingInfo, String> {
-    *shared.token.write().await = Uuid::new_v4().simple().to_string();
+    *shared.token.write().await = dock::new_pairing_token();
+    persist(&shared).await?;
     Ok(pairing(&shared).await)
 }
 
@@ -209,6 +211,7 @@ async fn persist(shared: &Shared) -> Result<(), String> {
         &dock::SavedState {
             accent: shared.accent.read().await.clone(),
             config: shared.config.read().await.clone(),
+            pairing_token: shared.token.read().await.clone(),
         },
     )
 }
@@ -305,10 +308,43 @@ async fn run_server(shared: Arc<Shared>) {
     }
 }
 
+async fn run_discovery(shared: Arc<Shared>) {
+    let address = SocketAddr::from(([0, 0, 0, 0], discovery::PORT));
+    let socket = match tokio::net::UdpSocket::bind(address).await {
+        Ok(socket) => socket,
+        Err(err) => {
+            log::error!("Could not listen for LAN discovery on {address}: {err}");
+            return;
+        }
+    };
+    let mut buffer = [0_u8; 128];
+    loop {
+        let Ok((length, sender)) = socket.recv_from(&mut buffer).await else {
+            continue;
+        };
+        let Ok(request) = std::str::from_utf8(&buffer[..length]) else {
+            continue;
+        };
+        let Some(nonce) = request.strip_prefix(discovery::REQUEST) else {
+            continue;
+        };
+        if !discovery::valid_nonce(nonce) {
+            continue;
+        }
+        let response = format!(
+            "{}{}:{}",
+            discovery::OFFER,
+            nonce,
+            discovery::proof(&shared.token.read().await, nonce)
+        );
+        let _ = socket.send_to(response.as_bytes(), sender).await;
+    }
+}
+
 pub fn run() {
     let (updates, _) = broadcast::channel(32);
     let shared = Arc::new(Shared {
-        token: RwLock::new(Uuid::new_v4().simple().to_string()),
+        token: RwLock::new(dock::new_pairing_token()),
         track: RwLock::new(Track::default()),
         clients: RwLock::new(0),
         accent: RwLock::new("#b8ef64".into()),
@@ -325,13 +361,16 @@ pub fn run() {
         .setup(move |app| {
             let path = dock::config_path(&app.path().app_config_dir().map_err(|err| err.to_string())?);
             let saved = dock::load(&path);
+            dock::save(&path, &saved)?;
             let _ = shared.config_path.set(path);
             tauri::async_runtime::block_on(async {
                 *shared.accent.write().await = saved.accent;
                 *shared.config.write().await = saved.config;
+                *shared.token.write().await = saved.pairing_token;
             });
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(run_server(shared.clone()));
+            tauri::async_runtime::spawn(run_discovery(shared.clone()));
             let weather_shared = shared.clone();
             let weather_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {

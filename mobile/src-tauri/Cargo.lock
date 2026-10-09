@@ -2862,9 +2862,11 @@ dependencies = [
 name = "spotdock-mobile"
 version = "0.1.0"
 dependencies = [
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-barcode-scanner",
+ "uuid",
 ]
 
 [[package]]

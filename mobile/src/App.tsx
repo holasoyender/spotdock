@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react"
 import { Format, requestPermissions, scan } from "@tauri-apps/plugin-barcode-scanner"
+import { invoke } from "@tauri-apps/api/core"
 import { Clock3, Disc3, Grid3X3, Music2, QrCode, Settings2, Wifi, WifiOff } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -45,6 +46,8 @@ export default function App() {
   const [settings, setSettings] = useState(false)
   const [error, setError] = useState("")
   const [actionMessage, setActionMessage] = useState("")
+  const [navigationVisible, setNavigationVisible] = useState(false)
+  const navigationTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const socket = useRef<WebSocket | null>(null)
   const seeking = useRef(false)
   const lastTrack = useRef<Track>(empty)
@@ -67,11 +70,14 @@ export default function App() {
   }, [preferences.awake])
   useEffect(() => { const timer = setInterval(() => { setClock(new Date()); if (track.playing && status === "connected") setPosition((value) => Math.min(track.durationMs, value + 1000)) }, 1000); return () => clearInterval(timer) }, [track.playing, track.durationMs, status])
   useEffect(() => { const timer = setInterval(() => { if (view === "player" && !track.playing && Date.now() - lastActivity.current > config.returnAfterSeconds * 1000) setView("clock") }, 1000); return () => clearInterval(timer) }, [view, track.playing, config.returnAfterSeconds])
+  useEffect(() => () => { if (navigationTimer.current) clearTimeout(navigationTimer.current) }, [])
+  useEffect(() => { if (settings) { if (navigationTimer.current) clearTimeout(navigationTimer.current); setNavigationVisible(false) } }, [settings])
   useEffect(() => {
     if (!url || !validAddress(url)) { setStatus("offline"); return }
     localStorage.setItem("spotdock:url", JSON.stringify(url))
     let stopped = false
     let retry: ReturnType<typeof setTimeout> | undefined
+    let lastDiscovery = 0
     const applyTrack = (patch: TrackUpdate["track"], settings: DockConfig) => {
       const previous = lastTrack.current
       const next = { ...previous, ...patch }
@@ -100,7 +106,28 @@ export default function App() {
           applyTrack(message.track, nextConfig)
         } catch { /* ignore malformed messages */ }
       }
-      ws.onclose = () => { if (!stopped) { setStatus("offline"); setTrack(empty); lastTrack.current = empty; setView("clock"); retry = setTimeout(connect, 2500) } }
+      ws.onclose = () => {
+        if (stopped) return
+        setStatus("offline"); setTrack(empty); lastTrack.current = empty; setView("clock")
+        retry = setTimeout(async () => {
+          if (stopped) return
+          if (Date.now() - lastDiscovery > 8000) {
+            lastDiscovery = Date.now()
+            try {
+              const saved = new URL(url)
+              const host = await invoke<string | null>("discover_desktop", { token: saved.searchParams.get("token"), previousHost: saved.hostname })
+              if (stopped) return
+              if (host && host !== saved.hostname) {
+                saved.hostname = host
+                setManual(saved.toString())
+                setUrl(saved.toString())
+                return
+              }
+            } catch { /* Discovery is best effort; the saved address is still retried. */ }
+          }
+          connect()
+        }, 2500)
+      }
       ws.onerror = () => ws.close()
     }
     connect()
@@ -108,6 +135,12 @@ export default function App() {
   }, [url])
 
   function openView(next: View) { lastActivity.current = Date.now(); setView(next) }
+  function revealNavigation() {
+    if (settings) return
+    setNavigationVisible(true)
+    if (navigationTimer.current) clearTimeout(navigationTimer.current)
+    navigationTimer.current = setTimeout(() => setNavigationVisible(false), 5000)
+  }
   function saveAddress(value: string) { if (!validAddress(value)) { setError("Introduce una dirección SpotDock válida de la red local."); return }; setError(""); setUrl(value.trim()); setSettings(false) }
   async function scanCode() { try { const permission = await requestPermissions(); if (permission === "denied") throw new Error("Activa el permiso de cámara para escanear el QR."); const result = await scan({ formats: [Format.QRCode], cameraDirection: "back" }); saveAddress(result.content) } catch (cause) { setError(String(cause)); setSettings(true) } }
   function send(action: Action) { lastActivity.current = Date.now(); if (socket.current?.readyState === WebSocket.OPEN) socket.current.send(JSON.stringify(action)) }
@@ -120,10 +153,10 @@ export default function App() {
   function forget() { socket.current?.close(); localStorage.removeItem("spotdock:url"); setUrl(""); setManual(""); setTrack(empty); setWeather(null); setView("clock"); setSettings(false) }
   const setPreference = <K extends keyof Preferences>(key: K, value: Preferences[K]) => setPreferences((current) => ({ ...current, [key]: value }))
 
-  return <div className="dark relative h-screen overflow-hidden bg-[#090b0b] text-white" style={theme}>
+  return <div className="dark relative h-screen overflow-hidden bg-[#090b0b] text-white" style={theme} onPointerDown={revealNavigation}>
     {view === "player" && connected && track.artwork && <div className="pointer-events-none absolute inset-0 overflow-hidden"><img src={track.artwork} alt="" className="absolute left-[12%] top-[-45%] h-[190%] w-[76%] scale-125 object-cover opacity-[0.18] blur-[100px] saturate-125" /><div className="absolute inset-0 bg-[#090b0b]/35" /></div>}
-    <div className="relative flex h-full min-h-0 flex-col px-5 py-4 sm:px-9 sm:py-5"><header className="flex shrink-0 items-center justify-between gap-3"><div className="flex items-center gap-2.5"><div className="flex size-9 items-center justify-center rounded-xl dock-accent-bg"><Disc3 className="size-5" /></div><span className="hidden text-lg font-semibold tracking-tight sm:inline">SpotDock</span></div><nav aria-label="Vistas del dock" className="flex items-center gap-1 rounded-2xl border border-white/8 bg-white/4 p-1"><Button variant="ghost" size="sm" aria-label="Reloj" aria-current={view === "clock" ? "page" : undefined} onClick={() => openView("clock")} className={view === "clock" ? "dock-view-active" : "text-white/45"}><Clock3 className="size-4" /><span className="hidden text-xs sm:inline">Reloj</span></Button><Button variant="ghost" size="sm" aria-label="Música" aria-current={view === "player" ? "page" : undefined} onClick={() => openView("player")} className={view === "player" ? "dock-view-active" : "text-white/45"}><Music2 className="size-4" /><span className="hidden text-xs sm:inline">Música</span></Button><Button variant="ghost" size="sm" aria-label="Botonera" aria-current={view === "deck" ? "page" : undefined} onClick={() => openView("deck")} className={view === "deck" ? "dock-view-active" : "text-white/45"}><Grid3X3 className="size-4" /><span className="hidden text-xs sm:inline">Botonera</span></Button></nav><div className="flex items-center gap-2"><Badge variant="outline" className={`gap-1 border-white/15 ${connected ? "dock-accent-text" : "text-white/45"}`}>{connected ? <Wifi className="size-3" /> : <WifiOff className="size-3" />}<span className="hidden sm:inline">{connected ? "Conectado" : status === "connecting" ? "Conectando" : "Sin conexión"}</span></Badge>{!connected && <Button variant="ghost" size="icon" aria-label="Escanear QR" onClick={scanCode}><QrCode className="size-4" /></Button>}<Button variant="ghost" size="icon" aria-label="Ajustes" onClick={() => setSettings(true)}><Settings2 className="size-5" /></Button></div></header>
-      {view === "clock" && <ClockView now={clock} config={config} weather={weather} connected={connected} onOpenPlayer={() => openView("player")} onPair={scanCode} />}
+    <div className="relative flex h-full min-h-0 flex-col px-5 py-4 sm:px-9 sm:py-5"><header aria-hidden={!navigationVisible} className={`absolute inset-x-5 top-4 z-20 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-[#111615]/90 p-2 shadow-2xl backdrop-blur-xl transition-all duration-300 sm:inset-x-9 sm:top-5 ${navigationVisible ? "translate-y-0 opacity-100" : "pointer-events-none -translate-y-3 opacity-0"}`}><div className="flex items-center gap-2.5"><div className="flex size-9 items-center justify-center rounded-xl dock-accent-bg"><Disc3 className="size-5" /></div><span className="hidden text-lg font-semibold tracking-tight sm:inline">SpotDock</span></div><nav aria-label="Vistas del dock" className="flex items-center gap-1 rounded-2xl border border-white/8 bg-white/4 p-1"><Button variant="ghost" size="sm" aria-label="Reloj" aria-current={view === "clock" ? "page" : undefined} onClick={() => openView("clock")} className={view === "clock" ? "dock-view-active" : "text-white/45"}><Clock3 className="size-4" /><span className="hidden text-xs sm:inline">Reloj</span></Button><Button variant="ghost" size="sm" aria-label="Música" aria-current={view === "player" ? "page" : undefined} onClick={() => openView("player")} className={view === "player" ? "dock-view-active" : "text-white/45"}><Music2 className="size-4" /><span className="hidden text-xs sm:inline">Música</span></Button><Button variant="ghost" size="sm" aria-label="Botonera" aria-current={view === "deck" ? "page" : undefined} onClick={() => openView("deck")} className={view === "deck" ? "dock-view-active" : "text-white/45"}><Grid3X3 className="size-4" /><span className="hidden text-xs sm:inline">Botonera</span></Button></nav><div className="flex items-center gap-2"><Badge variant="outline" className={`gap-1 border-white/15 ${connected ? "dock-accent-text" : "text-white/45"}`}>{connected ? <Wifi className="size-3" /> : <WifiOff className="size-3" />}<span className="hidden sm:inline">{connected ? "Conectado" : status === "connecting" ? "Conectando" : "Sin conexión"}</span></Badge>{!connected && <Button variant="ghost" size="icon" aria-label="Escanear QR" onClick={scanCode}><QrCode className="size-4" /></Button>}<Button variant="ghost" size="icon" aria-label="Ajustes" onClick={() => setSettings(true)}><Settings2 className="size-5" /></Button></div></header>
+      {view === "clock" && <ClockView now={clock} config={config} weather={weather} connected={connected} paired={Boolean(url)} onOpenPlayer={() => openView("player")} onPair={scanCode} />}
       {view === "player" && <PlayerView track={track} position={position} setPosition={setPosition} seeking={seeking} send={send} compact={preferences.compact} onActivity={() => { lastActivity.current = Date.now() }} />}
       {view === "deck" && <DeckView buttons={config.buttons} connected={connected} onPress={pressButton} message={actionMessage} />}
     </div>
