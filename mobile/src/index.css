@@ -133,6 +133,7 @@ html, body, #root { width: 100%; height: 100%; overflow: hidden; }
 .dock-accent-bg { background-color: var(--dock-accent) !important; color: var(--dock-accent-ink) !important; }
 .dock-accent-text { color: var(--dock-accent) !important; }
 .dock-accent-hover:hover { filter: brightness(1.08); }
+.dock-view-active { background-color: color-mix(in srgb, var(--dock-accent) 16%, transparent) !important; color: var(--dock-accent) !important; }
 .dock-slider [data-slot="slider-track"] { height: 6px; }
 .dock-slider [data-slot="slider-range"] { background-color: var(--dock-accent); }
 .dock-slider [data-slot="slider-thumb"] { background-color: var(--dock-accent); border-color: var(--dock-accent); }

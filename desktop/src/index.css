@@ -137,5 +137,6 @@ html, body, #root { width: 100%; height: 100%; overflow: hidden; }
 .dock-nav-active { background-color: color-mix(in srgb, var(--dock-accent) 12%, transparent); }
 .dock-slider [data-slot="slider-track"] { height: 6px; border-radius: 999px; }
 .dock-slider [data-slot="slider-range"], .dock-slider [data-slot="slider-thumb"] { background-color: var(--dock-accent); }
+[data-slot="switch"][data-checked] { background-color: var(--dock-accent); }
 .desktop-scroll::-webkit-scrollbar { width: 8px; }
 .desktop-scroll::-webkit-scrollbar-thumb { background: #313934; border: 2px solid #0b0d0c; border-radius: 99px; }

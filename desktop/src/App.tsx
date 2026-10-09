@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { QRCodeSVG } from "qrcode.react"
-import { Check, Copy, Disc3, Laptop2, Link2, Maximize2, Minimize2, Minus, Music2, Palette, Pause, Play, QrCode, RefreshCw, Repeat, Repeat1, Settings2, Shuffle, SkipBack, SkipForward, Smartphone, Wifi, X } from "lucide-react"
+import { Check, Clock3, Copy, Disc3, Grid3X3, Laptop2, Link2, Maximize2, Minimize2, Minus, Music2, Palette, Pause, Play, QrCode, RefreshCw, Repeat, Repeat1, Settings2, Shuffle, SkipBack, SkipForward, Smartphone, Wifi, X, type LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,15 +11,18 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Slider } from "@/components/ui/slider"
+import { ClockSettings, DeckSettings } from "./DockSettings"
+import { defaultDockConfig, type DockConfig, type Weather } from "../../shared/dock"
 
 type Track = { title: string; artist: string; album: string; artwork: string | null; positionMs: number; durationMs: number; playing: boolean; shuffle: boolean; repeat: string; available: boolean }
-type Snapshot = { kind: "state"; track: Track; clients: number; accent: string }
+type Snapshot = { kind: "state"; track: Track; clients: number; accent: string; config: DockConfig; weather: Weather | null }
+type TrackUpdate = { kind: "track"; track: Omit<Track, "artwork"> & { artwork?: string | null } }
 type Pairing = { url: string; clients: number; port: number }
 type Action = { action: "play_pause" | "next" | "previous" } | { action: "seek"; position_ms: number } | { action: "shuffle"; enabled: boolean } | { action: "repeat"; mode: string }
-type View = "player" | "devices" | "settings"
+type View = "player" | "clock" | "deck" | "devices" | "settings"
 
 const empty: Track = { title: "Nada sonando todavía", artist: "Abre Spotify en este ordenador", album: "", artwork: null, positionMs: 0, durationMs: 0, playing: false, shuffle: false, repeat: "off", available: false }
-const initial: Snapshot = { kind: "state", track: empty, clients: 0, accent: "#b8ef64" }
+const initial: Snapshot = { kind: "state", track: empty, clients: 0, accent: "#b8ef64", config: defaultDockConfig, weather: null }
 const palette = [
   { name: "Lima", color: "#b8ef64" }, { name: "Blanco", color: "#ffffff" },
   { name: "Azul", color: "#91c7ff" }, { name: "Rosa", color: "#ffb8d7" },
@@ -63,7 +66,7 @@ function WindowChrome() {
   </div>
 }
 
-function NavButton({ view, current, label, icon: Icon, onClick }: { view: View; current: View; label: string; icon: typeof Music2; onClick: (view: View) => void }) {
+function NavButton({ view, current, label, icon: Icon, onClick }: { view: View; current: View; label: string; icon: LucideIcon; onClick: (view: View) => void }) {
   return <Button variant="ghost" onClick={() => onClick(view)} aria-current={current === view ? "page" : undefined} className={`w-full justify-start gap-3 rounded-xl px-4 py-3 text-sm normal-case tracking-normal ${current === view ? "dock-nav-active text-white" : "text-white/55 hover:text-white"}`}><Icon className={`size-4 ${current === view ? "dock-accent-text" : ""}`} />{label}</Button>
 }
 
@@ -102,14 +105,17 @@ export default function App() {
     invoke<Pairing>("get_pairing").then(setPairing).catch((cause) => setError(String(cause)))
     invoke<Snapshot>("get_snapshot").then((snapshot) => {
       const saved = localStorage.getItem("spotdock:accent")
-      setState({ ...snapshot, accent: saved && isHex(saved) ? saved : snapshot.accent })
+      setState(snapshot)
       setPosition(snapshot.track.positionMs)
-      if (saved && isHex(saved) && saved !== snapshot.accent) invoke("set_accent", { accent: saved }).catch((cause) => setError(String(cause)))
+      if (!localStorage.getItem("spotdock:accent-migrated") && saved && isHex(saved) && saved !== snapshot.accent) invoke("set_accent", { accent: saved }).catch((cause) => setError(String(cause)))
+      localStorage.setItem("spotdock:accent-migrated", "1")
     }).catch((cause) => setError(String(cause)))
     let unlisten: (() => void) | undefined
+    let unlistenTrack: (() => void) | undefined
     listen<string>("spotdock:state", (event) => { try { const snapshot = JSON.parse(event.payload) as Snapshot; setState(snapshot); if (!seeking.current) setPosition(snapshot.track.positionMs) } catch { /* native event ignored */ } }).then((callback) => { unlisten = callback })
+    listen<string>("spotdock:track", (event) => { try { const update = JSON.parse(event.payload) as TrackUpdate; setState((previous) => ({ ...previous, track: { ...previous.track, ...update.track } })); if (!seeking.current) setPosition(update.track.positionMs) } catch { /* native event ignored */ } }).then((callback) => { unlistenTrack = callback })
     const clientsTimer = setInterval(() => { invoke<Snapshot>("get_snapshot").then((snapshot) => setState((previous) => ({ ...previous, clients: snapshot.clients }))).catch(() => {}) }, 2000)
-    return () => { unlisten?.(); clearInterval(clientsTimer) }
+    return () => { unlisten?.(); unlistenTrack?.(); clearInterval(clientsTimer) }
   }, [])
   useEffect(() => { localStorage.setItem("spotdock:host", host) }, [host])
 
@@ -122,21 +128,30 @@ export default function App() {
     setState((previous) => ({ ...previous, accent: color }))
     try { await invoke("set_accent", { accent: color }); setError("") } catch (cause) { setError(String(cause)) }
   }
+  const changeConfig = async (config: DockConfig) => {
+    setState((previous) => ({ ...previous, config }))
+    try { await invoke("set_dock_config", { config }); setError("") }
+    catch (cause) { setError(String(cause)); const current = await invoke<Snapshot>("get_snapshot"); setState(current); throw cause }
+  }
 
   return <div className="dark flex h-screen min-h-0 flex-col overflow-hidden bg-[#0b0d0c] text-foreground" style={theme}>
     <WindowChrome />
     <div className="flex min-h-0 flex-1 overflow-hidden">
       <aside className="hidden w-56 shrink-0 flex-col border-r border-white/8 bg-[#101312] px-4 py-6 lg:flex">
-        <div className="px-3"><div className="text-xs font-semibold uppercase tracking-[0.2em] dock-accent-text">TU MÚSICA, EN TU DOCK</div><p className="mt-2 text-xs leading-relaxed text-white/40">Spotify en tu PC. El control, en tu móvil.</p></div>
-        <nav aria-label="Navegación principal" className="mt-10 space-y-1"><NavButton view="player" current={view} onClick={setView} icon={Music2} label="Reproducción" /><NavButton view="devices" current={view} onClick={setView} icon={Smartphone} label="Dispositivos" /><NavButton view="settings" current={view} onClick={setView} icon={Settings2} label="Ajustes" /></nav>
+        <div className="px-3"><div className="text-xs font-semibold uppercase tracking-[0.2em] dock-accent-text">TU ESPACIO, EN TU DOCK</div><p className="mt-2 text-xs leading-relaxed text-white/40">Reloj, música y acciones a un toque.</p></div>
+        <nav aria-label="Navegación principal" className="mt-10 space-y-1"><NavButton view="player" current={view} onClick={setView} icon={Music2} label="Reproducción" /><NavButton view="clock" current={view} onClick={setView} icon={Clock3} label="Reloj y tiempo" /><NavButton view="deck" current={view} onClick={setView} icon={Grid3X3} label="Botonera" /><NavButton view="devices" current={view} onClick={setView} icon={Smartphone} label="Dispositivos" /><NavButton view="settings" current={view} onClick={setView} icon={Settings2} label="Ajustes" /></nav>
         <div className="mt-auto rounded-2xl border border-white/8 bg-white/4 p-4"><div className="flex items-center gap-2 text-xs font-semibold"><span className="size-2 rounded-full dock-accent-bg" /> Red local activa</div><p className="mt-2 text-xs leading-relaxed text-white/40">{state.clients ? `${state.clients} móvil${state.clients === 1 ? "" : "es"} conectado${state.clients === 1 ? "" : "s"}` : "Esperando móvil"}</p></div>
       </aside>
       <main className="desktop-scroll min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-5 py-6 sm:px-7 lg:px-9">
-        <div className="mx-auto w-full max-w-[1450px]"><header className="mb-6 flex flex-wrap items-center justify-between gap-3"><div className="min-w-0"><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{view === "player" ? "Centro de control" : view === "devices" ? "Tus dispositivos" : "Ajustes"}</h1><p className="mt-1 text-sm text-white/45">{view === "player" ? "Tu música, al alcance de la mano." : view === "devices" ? "Empareja y controla la conexión local." : "Haz que SpotDock se sienta tuyo."}</p></div><Badge variant="secondary" className="gap-2 border border-white/10 bg-white/5 px-3 py-2 text-white/65"><Wifi className="size-3.5 dock-accent-text" /> {state.clients} conectado{state.clients === 1 ? "" : "s"}</Badge></header>
-          <nav aria-label="Navegación principal" className="mb-5 grid grid-cols-3 gap-2 lg:hidden"><NavButton view="player" current={view} onClick={setView} icon={Music2} label="Reproducción" /><NavButton view="devices" current={view} onClick={setView} icon={Smartphone} label="Dispositivos" /><NavButton view="settings" current={view} onClick={setView} icon={Settings2} label="Ajustes" /></nav>
+        <div className="mx-auto w-full max-w-[1450px]"><header className="mb-6 flex flex-wrap items-center justify-between gap-3"><div className="min-w-0"><h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{view === "player" ? "Centro de control" : view === "clock" ? "Reloj y tiempo" : view === "deck" ? "Botonera" : view === "devices" ? "Tus dispositivos" : "Ajustes"}</h1><p className="mt-1 text-sm text-white/45">{view === "player" ? "Tu música, al alcance de la mano." : view === "clock" ? "Tu dock también te acompaña entre canciones." : view === "deck" ? "Tus acciones favoritas a un toque." : view === "devices" ? "Empareja y controla la conexión local." : "Haz que SpotDock se sienta tuyo."}</p></div><Badge variant="secondary" className="gap-2 border border-white/10 bg-white/5 px-3 py-2 text-white/65"><Wifi className="size-3.5 dock-accent-text" /> {state.clients} conectado{state.clients === 1 ? "" : "s"}</Badge></header>
+          <nav aria-label="Navegación principal" className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:hidden"><NavButton view="player" current={view} onClick={setView} icon={Music2} label="Reproducción" /><NavButton view="clock" current={view} onClick={setView} icon={Clock3} label="Reloj" /><NavButton view="deck" current={view} onClick={setView} icon={Grid3X3} label="Botonera" /><NavButton view="devices" current={view} onClick={setView} icon={Smartphone} label="Dispositivos" /><NavButton view="settings" current={view} onClick={setView} icon={Settings2} label="Ajustes" /></nav>
           {error && <div role="alert" className="mb-5 rounded-xl border border-red-400/30 bg-red-400/10 p-3 text-sm text-red-300">{error}</div>}
 
           {view === "player" && <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]"><Player track={state.track} position={position} setPosition={setPosition} seeking={seeking} send={send} /><PairingCard url={pairingUrl} rotate={rotate} /></div>}
+
+          {view === "clock" && <ClockSettings config={state.config} weather={state.weather} onChange={changeConfig} />}
+
+          {view === "deck" && <DeckSettings config={state.config} onChange={changeConfig} />}
 
           {view === "devices" && <div className="grid min-w-0 gap-5 md:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]"><PairingCard url={pairingUrl} rotate={rotate} /><Card className="min-w-0 border-white/8 bg-[#141817]"><CardHeader><div className="mb-2 flex size-10 items-center justify-center rounded-xl dock-accent-soft dock-accent-text"><Smartphone className="size-5" /></div><CardTitle>Dispositivos en línea</CardTitle><CardDescription>{state.clients === 0 ? "Todavía no hay móviles conectados." : `${state.clients} móvil${state.clients === 1 ? "" : "es"} conectado${state.clients === 1 ? "" : "s"} en esta red.`}</CardDescription></CardHeader><CardContent className="space-y-4 text-sm text-white/55"><Separator /><p>1. Abre SpotDock en el móvil.</p><p>2. Escanea el QR de esta pantalla.</p><p>3. Coloca el teléfono en horizontal sobre el dock.</p><p className="pt-2 text-xs text-white/35">Si el móvil no encuentra el PC, comprueba la Wi‑Fi y los permisos de red privada de Windows.</p></CardContent></Card></div>}
 
