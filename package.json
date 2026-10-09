@@ -1,0 +1,15 @@
+{
+  "name": "spotdock",
+  "private": true,
+  "workspaces": ["desktop", "mobile"],
+  "scripts": {
+    "dev:desktop": "bun --cwd desktop tauri dev",
+    "dev:mobile": "bun --cwd mobile tauri android dev",
+    "build:desktop": "bun --cwd desktop tauri build",
+    "build:android": "bun --cwd mobile tauri android build",
+    "check": "bun --cwd desktop run check && bun --cwd mobile run check"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4"
+  }
+}
