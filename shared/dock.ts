@@ -1,6 +1,26 @@
-export type Location = { name: string; country: string; admin1?: string | null; latitude: number; longitude: number }
-export type Weather = { temperatureC: number; apparentC: number; code: number; isDay: boolean; updatedAt: string }
-export type DeckButton = { id: string; label: string; icon: string; image: string | null; color: string; actionKind: "url" | "app" | "shortcut" | "media" | "view"; actionValue: string }
+export type Location = {
+  name: string
+  country: string
+  admin1?: string | null
+  latitude: number
+  longitude: number
+}
+export type Weather = {
+  temperatureC: number
+  apparentC: number
+  code: number
+  isDay: boolean
+  updatedAt: string
+}
+export type DeckButton = {
+  id: string
+  label: string
+  icon: string
+  image: string | null
+  color: string
+  actionKind: "url" | "app" | "shortcut" | "media" | "view"
+  actionValue: string
+}
 export type DockConfig = {
   clockStyle: "digital" | "analog"
   digitalStyle: "bold" | "minimal"
@@ -16,9 +36,23 @@ export type DockConfig = {
 }
 
 export const defaultDockConfig: DockConfig = {
-  clockStyle: "digital", digitalStyle: "bold", hourFormat: "24", showSeconds: false, showDate: true,
-  showWeather: true, weatherUnit: "C", weatherLocation: { name: "Madrid", country: "España", admin1: "Comunidad de Madrid", latitude: 40.4168, longitude: -3.7038 },
-  autoPlayer: true, returnAfterSeconds: 30, buttons: [],
+  clockStyle: "digital",
+  digitalStyle: "bold",
+  hourFormat: "24",
+  showSeconds: false,
+  showDate: true,
+  showWeather: true,
+  weatherUnit: "C",
+  weatherLocation: {
+    name: "Madrid",
+    country: "España",
+    admin1: "Comunidad de Madrid",
+    latitude: 40.4168,
+    longitude: -3.7038,
+  },
+  autoPlayer: true,
+  returnAfterSeconds: 30,
+  buttons: [],
 }
 
 export function weatherText(code: number, isDay: boolean) {
@@ -36,10 +70,14 @@ export function weatherText(code: number, isDay: boolean) {
 }
 
 export function weatherTemperature(celsius: number, unit: "C" | "F") {
-  return `${Math.round(unit === "F" ? celsius * 9 / 5 + 32 : celsius)}°${unit}`
+  return `${Math.round(unit === "F" ? (celsius * 9) / 5 + 32 : celsius)}°${unit}`
 }
 
 export function foregroundForColor(hex: string) {
   const [r, g, b] = [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16) / 255)
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.58 ? "#111714" : "#ffffff"
+}
+
+export function isHexColor(value: string) {
+  return /^#[0-9a-fA-F]{6}$/.test(value)
 }

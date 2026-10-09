@@ -2,3 +2,13 @@
 **/dist/
 **/target/
 *.log
+**/*.tsbuildinfo
+**/.gradle/
+**/build/
+.idea/
+.vscode/
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore

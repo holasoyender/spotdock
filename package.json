@@ -1,15 +1,22 @@
 {
   "name": "spotdock",
   "private": true,
+  "license": "MIT",
+  "repository": "https://github.com/holasoyender/spotdock",
   "workspaces": ["desktop", "mobile"],
   "scripts": {
-    "dev:desktop": "bun --cwd desktop tauri dev",
-    "dev:mobile": "bun --cwd mobile tauri android dev",
-    "build:desktop": "bun --cwd desktop tauri build",
-    "build:android": "bun --cwd mobile tauri android build",
-    "check": "bun --cwd desktop run check && bun --cwd mobile run check"
+    "dev:desktop": "bun run --cwd desktop tauri dev",
+    "dev:mobile": "bun run --cwd mobile tauri android dev",
+    "build:desktop": "bun run --cwd desktop tauri build",
+    "build:android": "bun run --cwd mobile tauri android build",
+    "check": "bun run --cwd desktop check && bun run --cwd mobile check",
+    "test": "bun test",
+    "build:frontends": "bun run --cwd desktop build && bun run --cwd mobile build",
+    "format": "prettier --write \"desktop/src/**/*.{ts,tsx}\" \"mobile/src/**/*.{ts,tsx}\" \"shared/*.ts\" \"tests/**/*.ts\" \"desktop/vite.config.ts\" \"mobile/vite.config.ts\"",
+    "format:check": "prettier --check \"desktop/src/**/*.{ts,tsx}\" \"mobile/src/**/*.{ts,tsx}\" \"shared/*.ts\" \"tests/**/*.ts\" \"desktop/vite.config.ts\" \"mobile/vite.config.ts\""
   },
   "devDependencies": {
-    "@types/node": "^26.6.4"
+    "@types/node": "^26.6.4",
+    "prettier": "3.6.2"
   }
 }

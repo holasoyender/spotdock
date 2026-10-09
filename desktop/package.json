@@ -2,6 +2,8 @@
   "name": "@spotdock/desktop",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "repository": "https://github.com/holasoyender/spotdock",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",

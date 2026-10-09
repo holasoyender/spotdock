@@ -1,10 +1,9 @@
 [package]
 name = "spotdock-mobile"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-license = ""
-repository = ""
+description = "Cliente Android de SpotDock"
+license = "MIT"
+repository = "https://github.com/holasoyender/spotdock"
 edition = "2024"
 rust-version = "1.90"
 

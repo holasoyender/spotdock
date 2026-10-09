@@ -2,12 +2,15 @@
 
 Dock para un móvil Android colocado en horizontal junto a un PC Windows. En reposo muestra un reloj digital o analógico, fecha y tiempo actual. Al tocar el reloj o al empezar una canción, muestra un reproductor. También incluye una botonera personalizable para ejecutar acciones en el PC. La aplicación de escritorio lee primero la sesión multimedia mediante **Windows GSMTC**. Si Spotify no la publica, puede usar opcionalmente la **Spotify Web API**. El estado llega al móvil por WebSocket en la red local. El móvil se empareja escaneando un QR que contiene la IP del ordenador y una clave aleatoria de 128 bits.
 
+Proyecto abierto bajo la [licencia MIT](LICENSE). Las contribuciones son bienvenidas; consulta [CONTRIBUTING.md](CONTRIBUTING.md). Para informar de un problema de seguridad, sigue [SECURITY.md](SECURITY.md).
+
 ## Requisitos
 
 - Windows 10/11 con Spotify Desktop y WebView2.
 - Android 7.0 o posterior, preferentemente ARM64, con cámara para el QR.
 - Ambos dispositivos en la misma red Wi‑Fi; el router debe permitir comunicación entre clientes.
-- [Bun](https://bun.sh/), Rust, Android SDK y NDK para compilar. **Android Studio no es necesario para ejecutar las órdenes siguientes.**
+- [Bun](https://bun.sh/), Rust, Android SDK y NDK para compilar. En Windows, la compilación nativa también requiere las herramientas C++ de MSVC y, normalmente, NASM (consulta la alternativa sin ensamblador más abajo). **Android Studio no es necesario para ejecutar las órdenes siguientes.**
+- Rust 1.90 o posterior, con `rustfmt` para la comprobación de formato.
 
 ## Desarrollo
 
@@ -74,6 +77,29 @@ La conexión alternativa requiere Internet en el PC y se actualiza cada 10 segun
 ## Comprobaciones
 
 ```powershell
+bun run format:check
 bun run check
-cd desktop/src-tauri; cargo check
+bun run test
+bun run build:frontends
+cargo fmt --manifest-path desktop/src-tauri/Cargo.toml --check
+cargo fmt --manifest-path mobile/src-tauri/Cargo.toml --check
+cd desktop/src-tauri
+cargo check
 ```
+
+`bun run format` aplica el estilo TypeScript del repositorio. La CI ejecuta las comprobaciones del frontend, `rustfmt` y los tests Rust de escritorio en Windows; las compilaciones Tauri y las pruebas en hardware siguen siendo necesarias para validar el comportamiento nativo. El `cargo check` del cliente Android debe ejecutarse con un target Android configurado, no con el target Windows del host.
+
+Si no tienes NASM al compilar el escritorio, puedes ejecutar `$env:AWS_LC_SYS_NO_ASM = "1"` en PowerShell antes de `cargo check` para compilar la dependencia criptográfica sin ensamblador.
+
+## Estructura del repositorio
+
+| Ruta | Responsabilidad |
+| --- | --- |
+| `shared/dock.ts` y `shared/protocol.ts` | Configuración, utilidades y contrato de mensajes entre PC y móvil. |
+| `desktop/src/App.tsx` | Estado de la interfaz, navegación y llamadas a comandos Tauri. |
+| `desktop/src/ClockSettings.tsx`, `DeckSettings.tsx`, `components/desktop/` | Ajustes y componentes visuales del escritorio. |
+| `mobile/src/connection/` | Validación de direcciones, WebSocket, reconexión y descubrimiento. |
+| `mobile/src/views/`, `components/dock/` | Reloj, reproductor, botonera, navegación y ajustes móviles. |
+| `desktop/src-tauri/src/`, `mobile/src-tauri/src/` | Implementaciones nativas en Rust. |
+
+Las claves locales `spotdock:*` y los campos de `shared/protocol.ts` forman parte de la compatibilidad entre versiones. Mantén las dos aplicaciones sincronizadas si los modificas.
