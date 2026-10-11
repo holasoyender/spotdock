@@ -13,6 +13,7 @@
     "windows": [
       {
         "title": "SpotDock",
+        "visible": false,
         "width": 1240,
         "height": 720,
         "minWidth": 900,

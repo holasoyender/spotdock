@@ -14,6 +14,28 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// The private signing values stay in the ignored keystore.properties file or
+// environment variables. Paths are resolved from the Android Gradle project.
+val signingProperties = Properties().apply {
+    val propertiesFile = rootProject.file("keystore.properties")
+    if (propertiesFile.isFile) {
+        propertiesFile.inputStream().use { load(it) }
+    }
+}
+
+fun signingValue(property: String, environment: String): String? =
+    signingProperties.getProperty(property)?.takeIf { it.isNotBlank() }
+        ?: System.getenv(environment)?.takeIf { it.isNotBlank() }
+
+val releaseKeystore = rootProject.file(
+    signingValue("storeFile", "SPOTDOCK_KEYSTORE_FILE") ?: "spotdock.jks"
+)
+val releaseKeyAlias = signingValue("keyAlias", "SPOTDOCK_KEY_ALIAS") ?: "spotdock"
+val releaseStorePassword = signingValue("storePassword", "SPOTDOCK_STORE_PASSWORD")
+val releaseKeyPassword = signingValue("keyPassword", "SPOTDOCK_KEY_PASSWORD") ?: releaseStorePassword
+val releaseSigningReady =
+    releaseKeystore.isFile && releaseStorePassword != null && releaseKeyPassword != null
+
 android {
     compileSdk = 37
     namespace = "com.spotdock.mobile"
@@ -24,6 +46,16 @@ android {
         targetSdk = 37
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+    }
+    signingConfigs {
+        if (releaseSigningReady) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        }
     }
     buildTypes {
         getByName("debug") {
@@ -40,6 +72,9 @@ android {
             }
         }
         getByName("release") {
+            if (releaseSigningReady) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             optimization {
                enable = true
             }
@@ -57,6 +92,19 @@ android {
     }
     buildFeatures {
         buildConfig = true
+    }
+}
+
+if (!releaseSigningReady) {
+    tasks.matching { it.name.startsWith("pre") && it.name.endsWith("ReleaseBuild") }.configureEach {
+        doFirst {
+            throw GradleException(
+                "Firma release incompleta: comprueba spotdock.jks y " +
+                    "mobile/src-tauri/gen/android/keystore.properties. " +
+                    "Configura storePassword y keyPassword (o SPOTDOCK_STORE_PASSWORD y " +
+                    "SPOTDOCK_KEY_PASSWORD). Consulta keystore.properties.example."
+            )
+        }
     }
 }
 

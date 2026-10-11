@@ -1,3 +1,4 @@
+mod background;
 #[path = "../../../shared/discovery.rs"]
 mod discovery;
 mod dock;
@@ -22,6 +23,7 @@ use std::{
     time::Duration,
 };
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_autostart::ManagerExt;
 use tokio::sync::{Notify, RwLock, broadcast};
 
 #[derive(Clone, Default, Serialize, PartialEq)]
@@ -141,6 +143,25 @@ async fn rotate_pairing(shared: tauri::State<'_, Arc<Shared>>) -> Result<Pairing
 #[tauri::command]
 async fn get_snapshot(shared: tauri::State<'_, Arc<Shared>>) -> Result<Snapshot, String> {
     Ok(snapshot(&shared).await)
+}
+
+#[tauri::command]
+fn get_autostart(app: AppHandle) -> Result<bool, String> {
+    app.autolaunch()
+        .is_enabled()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
+    let autolaunch = app.autolaunch();
+    if enabled {
+        autolaunch.enable()
+    } else {
+        autolaunch.disable()
+    }
+    .map_err(|error| error.to_string())?;
+    autolaunch.is_enabled().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -388,9 +409,16 @@ pub fn run() {
         port: 47917,
     });
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if !background::is_background_launch(&args) {
+                background::show_main_window(app);
+            }
+        }))
+        .plugin(tauri_plugin_autostart::Builder::new().arg(background::BACKGROUND_ARG).build())
         .plugin(tauri_plugin_log::Builder::new().build())
         .manage(shared.clone())
         .setup(move |app| {
+            background::create_tray(app)?;
             let path = dock::config_path(&app.path().app_config_dir().map_err(|err| err.to_string())?);
             spotify_web::init(path.with_file_name("spotify.json"));
             let saved = dock::load(&path);
@@ -437,12 +465,18 @@ pub fn run() {
                     tokio::time::sleep(Duration::from_millis(900)).await;
                 }
             });
+            if !background::is_background_launch(&std::env::args().collect::<Vec<_>>()) {
+                background::show_main_window(app.handle());
+            }
             Ok(())
         })
+        .on_window_event(background::handle_window_event)
         .invoke_handler(tauri::generate_handler![
             get_pairing,
             rotate_pairing,
             get_snapshot,
+            get_autostart,
+            set_autostart,
             get_spotify_status,
             connect_spotify,
             disconnect_spotify,

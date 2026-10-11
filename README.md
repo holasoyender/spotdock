@@ -25,14 +25,21 @@ En otra terminal:
 bun run dev:mobile
 ```
 
-`tauri android dev` utiliza un dispositivo Android conectado por USB si está disponible. Para compilar un APK sin emulador:
+`tauri android dev` utiliza un dispositivo Android conectado por USB si está disponible. Para generar un APK **release firmado** con `mobile/src-tauri/gen/android/spotdock.jks`, copia la plantilla de firma y rellena las contraseñas en el archivo local:
 
 ```powershell
-cd mobile
-bun tauri android build --debug --target aarch64 --apk --ci
+if (!(Test-Path mobile/src-tauri/gen/android/keystore.properties)) {
+  Copy-Item mobile/src-tauri/gen/android/keystore.properties.example mobile/src-tauri/gen/android/keystore.properties
+}
+# Edita keystore.properties: storePassword y keyPassword
+bun run build:android
 ```
 
-El APK de depuración se guarda bajo `mobile/src-tauri/gen/android/app/build/outputs/apk/`. Para Windows:
+El alias del keystore incluido localmente es `spotdock`. `storePassword` es la contraseña del almacén y `keyPassword` la de la clave; si ambas son iguales, repite el valor. `storeFile=./spotdock.jks` apunta a `mobile/src-tauri/gen/android/spotdock.jks`. El archivo `.jks` y `keystore.properties` están ignorados por Git y deben conservarse en privado. También se pueden proporcionar `SPOTDOCK_STORE_PASSWORD`, `SPOTDOCK_KEY_PASSWORD`, `SPOTDOCK_KEY_ALIAS` y `SPOTDOCK_KEYSTORE_FILE` como variables de entorno; las propiedades locales tienen prioridad.
+
+El APK firmado se guarda en `mobile/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk`. El comando compila en modo release por defecto; `--release` no es una opción de `tauri android build`. Si el dispositivo ya tiene una versión `com.spotdock.mobile` firmada con otra clave, desinstálala antes de instalar este APK; conserva el mismo keystore para futuras actualizaciones. Para compilar un APK de depuración sin estas credenciales, usa `cd mobile; bun tauri android build --debug --target aarch64 --apk --ci`.
+
+Para Windows:
 
 ```powershell
 cd desktop
@@ -52,6 +59,8 @@ El ejecutable queda en `desktop/src-tauri/target/debug/spotdock-desktop.exe`.
 El móvil arranca en la vista de reloj. Al tocarla abre el reproductor, y también puede abrirlo automáticamente cuando empiece a sonar música. Si la reproducción está pausada, vuelve al reloj tras el tiempo configurado. La barra superior aparece al tocar la pantalla y desaparece tras cinco segundos sin interacción. Permite cambiar entre reloj, música y botonera. Android oculta las barras de estado y navegación mientras el dock está en primer plano; un gesto desde el borde puede mostrarlas temporalmente. En el reproductor se puede reproducir/pausar, ir a la canción anterior o siguiente, desplazarse por la pista, activar aleatorio y cambiar la repetición. En Ajustes del móvil se pueden cambiar el brillo de la interfaz, la vista compacta y el bloqueo de pantalla activa. Estas preferencias se guardan localmente.
 
 La barra superior de escritorio permite arrastrar, minimizar, maximizar/restaurar y cerrar la ventana. La navegación lateral abre **Reproducción**, **Reloj y tiempo**, **Botonera**, **Dispositivos** y **Ajustes**. En Ajustes se puede elegir un color de acento predefinido o personalizado; el cambio llega en directo a los móviles conectados. En Android, los títulos largos se desplazan para que puedan leerse completos y la carátula aporta un fondo difuminado y tenue.
+
+Al cerrar la ventana del escritorio, SpotDock permanece en la bandeja de Windows y mantiene activos el servidor y la conexión con el móvil. Haz clic derecho en su icono para **Abrir SpotDock** o **Salir de SpotDock**; salir detiene también el servidor. En **Ajustes → Inicio y segundo plano** puedes activar **Iniciar con Windows**. Al iniciar sesión, la aplicación arrancará oculta en la bandeja y atenderá al móvil sin abrir la ventana. Si ejecutas SpotDock manualmente mientras ya está funcionando, se abrirá la ventana existente.
 
 ## Si Spotify no aparece en el escritorio
 

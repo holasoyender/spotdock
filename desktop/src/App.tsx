@@ -56,6 +56,8 @@ export default function App() {
   const [position, setPosition] = useState(0)
   const [error, setError] = useState("")
   const [copied, setCopied] = useState(false)
+  const [autostart, setAutostart] = useState(false)
+  const [autostartPending, setAutostartPending] = useState(false)
   const [host, setHost] = useState(() => localStorage.getItem("spotdock:host") ?? "")
   const [spotify, setSpotify] = useState<SpotifyAuthStatus>({
     connected: false,
@@ -143,6 +145,13 @@ export default function App() {
     localStorage.setItem("spotdock:host", host)
   }, [host])
 
+  useEffect(() => {
+    if (view !== "settings") return
+    invoke<boolean>("get_autostart")
+      .then(setAutostart)
+      .catch((cause) => setError(String(cause)))
+  }, [view])
+
   const send = async (action: Action) => {
     try {
       await invoke("control", { action })
@@ -209,6 +218,17 @@ export default function App() {
       setError("")
     } catch (cause) {
       setError(String(cause))
+    }
+  }
+  const changeAutostart = async (enabled: boolean) => {
+    setAutostartPending(true)
+    try {
+      setAutostart(await invoke<boolean>("set_autostart", { enabled }))
+      setError("")
+    } catch (cause) {
+      setError(String(cause))
+    } finally {
+      setAutostartPending(false)
     }
   }
 
@@ -323,6 +343,9 @@ export default function App() {
                 media={state.media}
                 connectSpotify={connectSpotify}
                 disconnectSpotify={disconnectSpotify}
+                autostart={autostart}
+                autostartPending={autostartPending}
+                onAutostartChange={changeAutostart}
                 onDashboard={() =>
                   invoke("open_spotify_developer_dashboard").catch((cause) =>
                     setError(String(cause)),

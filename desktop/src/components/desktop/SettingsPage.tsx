@@ -1,9 +1,10 @@
-import { Check, Copy, Laptop2, Link2, Palette } from "lucide-react"
+import { Check, Copy, Laptop2, Link2, Palette, Power } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
 import { SpotifySettingsCard } from "./SpotifySettingsCard"
 import type { Pairing, Snapshot, SpotifyAuthStatus } from "../../../../shared/protocol"
 
@@ -32,6 +33,9 @@ type Props = {
   connectSpotify: () => void
   disconnectSpotify: () => void
   onDashboard: () => void
+  autostart: boolean
+  autostartPending: boolean
+  onAutostartChange: (enabled: boolean) => void
 }
 
 export function SettingsPage({
@@ -50,6 +54,9 @@ export function SettingsPage({
   connectSpotify,
   disconnectSpotify,
   onDashboard,
+  autostart,
+  autostartPending,
+  onAutostartChange,
 }: Props) {
   return (
     <div className="grid min-w-0 gap-5 xl:grid-cols-2">
@@ -143,6 +150,35 @@ export function SettingsPage({
               El PC y el móvil deben estar en la misma Wi‑Fi. Permite el acceso de SpotDock en redes
               privadas cuando Windows lo solicite.
             </p>
+          </div>
+        </CardContent>
+      </Card>
+      <Card className="min-w-0 border-white/8 bg-[#141817]">
+        <CardHeader>
+          <div className="mb-2 flex size-10 items-center justify-center rounded-xl dock-accent-soft dock-accent-text">
+            <Power className="size-5" />
+          </div>
+          <CardTitle>Inicio y segundo plano</CardTitle>
+          <CardDescription>
+            Al cerrar la ventana, SpotDock sigue conectado en la bandeja de Windows.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-1">
+              <Label htmlFor="autostart">Iniciar con Windows</Label>
+              <p className="text-xs text-white/45">
+                Arranca oculto y mantiene el móvil conectado. Usa el icono de bandeja para abrir o
+                salir.
+              </p>
+            </div>
+            <Switch
+              id="autostart"
+              checked={autostart}
+              disabled={autostartPending}
+              onCheckedChange={onAutostartChange}
+              aria-label="Iniciar SpotDock con Windows"
+            />
           </div>
         </CardContent>
       </Card>
