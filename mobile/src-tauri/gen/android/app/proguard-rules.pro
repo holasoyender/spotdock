@@ -19,3 +19,12 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# ML Kit creates barcode scanner components through its dependency graph. R8
+# full mode can otherwise remove their constructors in release builds, causing
+# a NullPointerException when the first camera frame reaches the scanner.
+# See https://github.com/googlesamples/mlkit/issues/1018
+-keep class com.google.mlkit.common.** { *; }
+-keep class com.google.mlkit.vision.barcode.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_barcode.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_common.** { *; }
