@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Slider } from "@/components/ui/slider"
 import type { ControlAction as Action, Track } from "../../../../shared/protocol"
+import { t } from "../../../../shared/i18n"
 
-const empty = { title: "Nada sonando todavía", artist: "Abre Spotify en este ordenador" }
 const time = (ms: number) =>
   `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`
 
@@ -36,7 +36,8 @@ export function Player({
         <div className="relative min-w-0">
           <div className="mb-8 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] dock-accent-text">
-              <span className="size-2 rounded-full dock-accent-bg" /> Ahora suena
+              <span className="size-2 rounded-full dock-accent-bg" />{" "}
+              {t("desktop.player.nowPlaying")}
             </div>
             <Badge variant="outline" className="shrink-0 border-white/15 text-white/45">
               Spotify
@@ -47,7 +48,7 @@ export function Player({
               {track.artwork ? (
                 <img
                   src={track.artwork}
-                  alt={`Carátula de ${track.album}`}
+                  alt={t("common.imageAlt", { album: track.album })}
                   className="h-full w-full object-cover"
                 />
               ) : (
@@ -56,15 +57,17 @@ export function Player({
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
-                {track.album || "ESPERANDO MÚSICA"}
+                {track.album || t("common.waitingMusic").toUpperCase()}
               </p>
               <h2
                 className="mt-3 line-clamp-2 text-3xl font-semibold leading-tight tracking-tight xl:text-4xl"
                 title={track.title}
               >
-                {track.title || empty.title}
+                {track.title || t("desktop.player.emptyTitle")}
               </h2>
-              <p className="mt-3 truncate text-lg text-white/55">{track.artist || empty.artist}</p>
+              <p className="mt-3 truncate text-lg text-white/55">
+                {track.artist || t("desktop.player.emptyArtist")}
+              </p>
             </div>
           </div>
         </div>
@@ -94,7 +97,7 @@ export function Player({
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Aleatorio"
+              aria-label={t("common.shuffle")}
               disabled={!track.available}
               onClick={() => send({ action: "shuffle", enabled: !track.shuffle })}
               className={track.shuffle ? "dock-accent-text" : "text-white/45"}
@@ -104,7 +107,7 @@ export function Player({
             <Button
               variant="ghost"
               size="icon-lg"
-              aria-label="Anterior"
+              aria-label={t("common.previous")}
               disabled={!track.available}
               onClick={() => send({ action: "previous" })}
             >
@@ -112,7 +115,7 @@ export function Player({
             </Button>
             <Button
               size="icon-lg"
-              aria-label={track.playing ? "Pausar" : "Reproducir"}
+              aria-label={track.playing ? t("common.pause") : t("common.play")}
               disabled={!track.available}
               onClick={() => send({ action: "play_pause" })}
               className="size-14 rounded-full dock-accent-bg dock-accent-hover"
@@ -126,7 +129,7 @@ export function Player({
             <Button
               variant="ghost"
               size="icon-lg"
-              aria-label="Siguiente"
+              aria-label={t("common.next")}
               disabled={!track.available}
               onClick={() => send({ action: "next" })}
             >
@@ -135,7 +138,7 @@ export function Player({
             <Button
               variant="ghost"
               size="icon"
-              aria-label="Repetir"
+              aria-label={t("common.repeat")}
               disabled={!track.available}
               onClick={() =>
                 send({

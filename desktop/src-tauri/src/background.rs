@@ -29,12 +29,28 @@ pub fn handle_window_event(window: &tauri::Window, event: &WindowEvent) {
     }
 }
 
-pub fn create_tray(app: &mut App) -> tauri::Result<()> {
-    let open = MenuItem::with_id(app, "open", "Abrir SpotDock", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Salir de SpotDock", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&open, &quit])?;
+fn tray_menu(app: &AppHandle, locale: &str) -> tauri::Result<Menu<tauri::Wry>> {
+    let (open_label, quit_label) = if locale == crate::locale::SPANISH {
+        ("Abrir SpotDock", "Salir de SpotDock")
+    } else {
+        ("Open SpotDock", "Quit SpotDock")
+    };
+    let open = MenuItem::with_id(app, "open", open_label, true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", quit_label, true, None::<&str>)?;
+    Menu::with_items(app, &[&open, &quit])
+}
 
-    TrayIconBuilder::new()
+pub fn update_tray(app: &AppHandle, locale: &str) -> tauri::Result<()> {
+    if let Some(tray) = app.tray_by_id("spotdock") {
+        tray.set_menu(Some(tray_menu(app, locale)?))?;
+    }
+    Ok(())
+}
+
+pub fn create_tray(app: &mut App, locale: &str) -> tauri::Result<()> {
+    let menu = tray_menu(app.handle(), locale)?;
+
+    TrayIconBuilder::with_id("spotdock")
         .icon(
             app.default_window_icon()
                 .expect("SpotDock has a configured application icon")

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { getCurrentWindow } from "@tauri-apps/api/window"
 import { Disc3, Maximize2, Minimize2, Minus, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { t } from "../../../../shared/i18n"
 
 export function WindowChrome() {
   const [maximized, setMaximized] = useState(false)
@@ -47,13 +48,15 @@ export function WindowChrome() {
       >
         <Disc3 className="size-4 shrink-0 dock-accent-text" />
         <span className="text-xs font-semibold tracking-wide">SpotDock</span>
-        <span className="ml-2 hidden text-[11px] text-white/35 sm:inline">/ Centro de control</span>
+        <span className="ml-2 hidden text-[11px] text-white/35 sm:inline">
+          / {t("desktop.heading.player")}
+        </span>
       </div>
       <div className="flex shrink-0 items-stretch">
         <Button
           variant="ghost"
-          aria-label="Minimizar"
-          title="Minimizar"
+          aria-label={t("desktop.window.minimize")}
+          title={t("desktop.window.minimize")}
           onClick={() => windowAction("minimize")}
           className="h-full w-12 rounded-none text-white/65 hover:bg-white/10"
         >
@@ -61,8 +64,8 @@ export function WindowChrome() {
         </Button>
         <Button
           variant="ghost"
-          aria-label={maximized ? "Restaurar" : "Maximizar"}
-          title={maximized ? "Restaurar" : "Maximizar"}
+          aria-label={maximized ? t("desktop.window.restore") : t("desktop.window.maximize")}
+          title={maximized ? t("desktop.window.restore") : t("desktop.window.maximize")}
           onClick={() => windowAction("toggleMaximize")}
           className="h-full w-12 rounded-none text-white/65 hover:bg-white/10"
         >
@@ -70,8 +73,8 @@ export function WindowChrome() {
         </Button>
         <Button
           variant="ghost"
-          aria-label="Cerrar"
-          title="Cerrar"
+          aria-label={t("desktop.window.close")}
+          title={t("desktop.window.close")}
           onClick={() => windowAction("close")}
           className="h-full w-12 rounded-none text-white/65 hover:bg-red-600 hover:text-white"
         >

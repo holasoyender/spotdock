@@ -1,3 +1,6 @@
+import { t } from "./i18n"
+import { resources, type TranslationKey } from "./locales"
+
 export type Location = {
   name: string
   country: string
@@ -20,6 +23,31 @@ export type DeckButton = {
   color: string
   actionKind: "url" | "app" | "shortcut" | "media" | "view"
   actionValue: string
+}
+
+/** Display original preset labels in the viewer's language. Custom labels stay intact. */
+export function buttonDisplayLabel(button: DeckButton): string {
+  if (matchesTranslation("desktop.deck.newButton", button.label)) {
+    return t("desktop.deck.newButton")
+  }
+  const presets = [
+    ["media", "play_pause", "dock.default.play"],
+    ["media", "next", "dock.default.next"],
+    ["media", "previous", "dock.default.previous"],
+    ["view", "player", "dock.default.player"],
+    ["view", "clock", "dock.default.clock"],
+  ] as const
+  const preset = presets.find(
+    ([kind, value, key]) =>
+      button.actionKind === kind &&
+      button.actionValue === value &&
+      matchesTranslation(key, button.label),
+  )
+  return preset ? t(preset[2]) : button.label
+}
+
+function matchesTranslation(key: TranslationKey, label: string): boolean {
+  return resources["en-US"][key] === label || resources["es-ES"][key] === label
 }
 export type DockConfig = {
   clockStyle: "digital" | "analog"
@@ -56,17 +84,17 @@ export const defaultDockConfig: DockConfig = {
 }
 
 export function weatherText(code: number, isDay: boolean) {
-  if (code === 0) return isDay ? "Despejado" : "Noche despejada"
-  if (code === 1 || code === 2) return "Poco nuboso"
-  if (code === 3) return "Nublado"
-  if (code === 45 || code === 48) return "Niebla"
-  if (code >= 51 && code <= 57) return "Llovizna"
-  if (code >= 61 && code <= 67) return "Lluvia"
-  if (code >= 71 && code <= 77) return "Nieve"
-  if (code >= 80 && code <= 82) return "Chubascos"
-  if (code >= 85 && code <= 86) return "Nieve"
-  if (code >= 95) return "Tormenta"
-  return "Tiempo variable"
+  if (code === 0) return t(isDay ? "weather.clearDay" : "weather.clearNight")
+  if (code === 1 || code === 2) return t("weather.partlyCloudy")
+  if (code === 3) return t("weather.cloudy")
+  if (code === 45 || code === 48) return t("weather.fog")
+  if (code >= 51 && code <= 57) return t("weather.drizzle")
+  if (code >= 61 && code <= 67) return t("weather.rain")
+  if (code >= 71 && code <= 77) return t("weather.snow")
+  if (code >= 80 && code <= 82) return t("weather.showers")
+  if (code >= 85 && code <= 86) return t("weather.snow")
+  if (code >= 95) return t("weather.storm")
+  return t("weather.variable")
 }
 
 export function weatherTemperature(celsius: number, unit: "C" | "F") {

@@ -7,31 +7,33 @@ import { Label } from "@/components/ui/label"
 import { DeckIcon, deckIconNames } from "../../DeckIcon"
 import { Segmented } from "./Segmented"
 import type { DeckButton } from "../../../../shared/dock"
+import { t, type TranslationKey } from "../../../../shared/i18n"
+import { localizeNativeMessage } from "../../../../shared/nativeMessages"
 
-const iconNames: Record<string, string> = {
-  play: "Play",
-  next: "Siguiente",
-  previous: "Anterior",
-  music: "Música",
-  clock: "Reloj",
-  globe: "Web",
-  terminal: "Terminal",
-  folder: "Carpeta",
-  mail: "Correo",
-  keyboard: "Teclado",
-  rocket: "Cohete",
-  power: "Encendido",
-  sun: "Sol",
-  heart: "Corazón",
-  star: "Estrella",
-  settings: "Ajustes",
+const iconNames: Record<string, TranslationKey> = {
+  play: "desktop.icon.play",
+  next: "desktop.icon.next",
+  previous: "desktop.icon.previous",
+  music: "desktop.icon.music",
+  clock: "desktop.icon.clock",
+  globe: "desktop.icon.globe",
+  terminal: "desktop.icon.terminal",
+  folder: "desktop.icon.folder",
+  mail: "desktop.icon.mail",
+  keyboard: "desktop.icon.keyboard",
+  rocket: "desktop.icon.rocket",
+  power: "desktop.icon.power",
+  sun: "desktop.icon.sun",
+  heart: "desktop.icon.heart",
+  star: "desktop.icon.star",
+  settings: "desktop.icon.settings",
 }
-export const actionNames: Record<DeckButton["actionKind"], string> = {
-  url: "Abrir web",
-  app: "Abrir aplicación",
-  shortcut: "Atajo de teclado",
-  media: "Música",
-  view: "Cambiar vista",
+export const actionNames: Record<DeckButton["actionKind"], TranslationKey> = {
+  url: "desktop.action.url",
+  app: "desktop.action.app",
+  shortcut: "desktop.action.shortcut",
+  media: "desktop.action.media",
+  view: "desktop.action.view",
 }
 const actionDefaults: Record<DeckButton["actionKind"], string> = {
   url: "https://",
@@ -43,7 +45,7 @@ const actionDefaults: Record<DeckButton["actionKind"], string> = {
 
 async function imageData(file: File): Promise<string> {
   if (file.size > 5_000_000 || !["image/png", "image/jpeg", "image/webp"].includes(file.type))
-    throw new Error("Elige una imagen PNG, JPEG o WebP de menos de 5 MB.")
+    throw new Error(t("desktop.editor.imageType"))
   const url = URL.createObjectURL(file)
   try {
     const image = new Image()
@@ -53,7 +55,7 @@ async function imageData(file: File): Promise<string> {
     canvas.width = 160
     canvas.height = 160
     const context = canvas.getContext("2d")
-    if (!context) throw new Error("No se pudo procesar la imagen.")
+    if (!context) throw new Error(t("desktop.editor.imageProcess"))
     const size = Math.min(image.width, image.height)
     context.drawImage(
       image,
@@ -67,8 +69,7 @@ async function imageData(file: File): Promise<string> {
       160,
     )
     const data = canvas.toDataURL("image/webp", 0.78)
-    if (data.length > 120_000)
-      throw new Error("La imagen comprimida sigue siendo demasiado grande.")
+    if (data.length > 120_000) throw new Error(t("desktop.editor.imageLarge"))
     return data
   } finally {
     URL.revokeObjectURL(url)
@@ -93,7 +94,7 @@ export function ButtonEditor({
       setError("")
       await onSave(draft)
     } catch (cause) {
-      setError(String(cause))
+      setError(localizeNativeMessage(cause))
     }
   }
   return (
@@ -101,10 +102,10 @@ export function ButtonEditor({
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <CardTitle>Editar botón</CardTitle>
-            <CardDescription>Su aspecto y acción se sincronizan con el móvil.</CardDescription>
+            <CardTitle>{t("desktop.editor.title")}</CardTitle>
+            <CardDescription>{t("desktop.editor.description")}</CardDescription>
           </div>
-          <Button variant="ghost" size="icon" onClick={onCancel} aria-label="Cancelar">
+          <Button variant="ghost" size="icon" onClick={onCancel} aria-label={t("common.cancel")}>
             <X />
           </Button>
         </div>
@@ -112,7 +113,7 @@ export function ButtonEditor({
       <CardContent className="space-y-5">
         <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_110px]">
           <div className="space-y-2">
-            <Label htmlFor="button-label">Texto del botón</Label>
+            <Label htmlFor="button-label">{t("desktop.editor.label")}</Label>
             <Input
               id="button-label"
               maxLength={32}
@@ -121,7 +122,7 @@ export function ButtonEditor({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="button-color">Fondo</Label>
+            <Label htmlFor="button-color">{t("desktop.editor.background")}</Label>
             <Input
               id="button-color"
               type="color"
@@ -132,7 +133,7 @@ export function ButtonEditor({
           </div>
         </div>
         <div className="space-y-2">
-          <Label htmlFor="button-image">Imagen personalizada</Label>
+          <Label htmlFor="button-image">{t("desktop.editor.image")}</Label>
           <Input
             id="button-image"
             type="file"
@@ -144,31 +145,29 @@ export function ButtonEditor({
                   patch({ image: await imageData(file) })
                   setError("")
                 } catch (cause) {
-                  setError(String(cause))
+                  setError(localizeNativeMessage(cause))
                 }
               }
             }}
             className="cursor-pointer"
           />
-          <p className="text-xs text-white/40">
-            Se recorta a formato cuadrado y se reduce antes de enviarla.
-          </p>
+          <p className="text-xs text-white/40">{t("desktop.editor.imageHelp")}</p>
           {draft.image && (
             <Button variant="outline" size="sm" onClick={() => patch({ image: null })}>
-              <Trash2 className="size-3.5" /> Quitar imagen
+              <Trash2 className="size-3.5" /> {t("desktop.editor.removeImage")}
             </Button>
           )}
         </div>
         <div className="space-y-2">
-          <Label>Icono cuando no hay imagen</Label>
+          <Label>{t("desktop.editor.icon")}</Label>
           <div className="flex flex-wrap gap-2">
             {deckIconNames.map((name) => (
               <Button
                 key={name}
                 variant="outline"
                 size="icon"
-                title={iconNames[name]}
-                aria-label={iconNames[name]}
+                title={t(iconNames[name])}
+                aria-label={t(iconNames[name])}
                 onClick={() => patch({ icon: name })}
                 className={
                   draft.icon === name
@@ -182,7 +181,7 @@ export function ButtonEditor({
           </div>
         </div>
         <div className="space-y-2">
-          <Label>Acción</Label>
+          <Label>{t("desktop.editor.action")}</Label>
           <div className="flex flex-wrap gap-2">
             {(Object.keys(actionNames) as DeckButton["actionKind"][]).map((kind) => (
               <Button
@@ -191,27 +190,31 @@ export function ButtonEditor({
                 onClick={() => patch({ actionKind: kind, actionValue: actionDefaults[kind] })}
                 className={draft.actionKind === kind ? "dock-accent-bg" : "border-white/15"}
               >
-                {actionNames[kind]}
+                {t(actionNames[kind])}
               </Button>
             ))}
           </div>
         </div>
         {draft.actionKind === "media" || draft.actionKind === "view" ? (
           <div className="space-y-2">
-            <Label>{draft.actionKind === "media" ? "Control" : "Pantalla"}</Label>
+            <Label>
+              {draft.actionKind === "media"
+                ? t("desktop.editor.control")
+                : t("desktop.editor.screen")}
+            </Label>
             <Segmented
               value={draft.actionValue}
               options={
                 draft.actionKind === "media"
                   ? [
-                      { value: "play_pause", label: "Play / pausa" },
-                      { value: "next", label: "Siguiente" },
-                      { value: "previous", label: "Anterior" },
+                      { value: "play_pause", label: t("desktop.editor.playPause") },
+                      { value: "next", label: t("common.next") },
+                      { value: "previous", label: t("common.previous") },
                     ]
                   : [
-                      { value: "clock", label: "Reloj" },
-                      { value: "player", label: "Música" },
-                      { value: "deck", label: "Botonera" },
+                      { value: "clock", label: t("common.clock") },
+                      { value: "player", label: t("common.music") },
+                      { value: "deck", label: t("common.deck") },
                     ]
               }
               onChange={(actionValue) => patch({ actionValue })}
@@ -221,10 +224,10 @@ export function ButtonEditor({
           <div className="space-y-2">
             <Label htmlFor="action-value">
               {draft.actionKind === "url"
-                ? "Dirección web"
+                ? t("desktop.editor.webAddress")
                 : draft.actionKind === "app"
-                  ? "Ruta completa del .exe o .lnk"
-                  : "Combinación de teclas"}
+                  ? t("desktop.editor.appPath")
+                  : t("desktop.editor.keys")}
             </Label>
             <Input
               id="action-value"
@@ -232,7 +235,7 @@ export function ButtonEditor({
               onChange={(event) => patch({ actionValue: event.target.value })}
               placeholder={
                 draft.actionKind === "url"
-                  ? "https://ejemplo.com"
+                  ? t("desktop.editor.urlExample")
                   : draft.actionKind === "app"
                     ? "C:\\Program Files\\App\\app.exe"
                     : "Ctrl+Shift+S"
@@ -240,10 +243,10 @@ export function ButtonEditor({
             />
             <p className="text-xs text-white/40">
               {draft.actionKind === "shortcut"
-                ? "Se envía a la aplicación que tenga el foco en Windows. Acepta Ctrl, Alt, Shift, Win, letras, números y F1–F12."
+                ? t("desktop.editor.shortcutHelp")
                 : draft.actionKind === "app"
-                  ? "Se abrirá en el ordenador cuando pulses el botón del móvil."
-                  : "Se abrirá en el navegador predeterminado del ordenador."}
+                  ? t("desktop.editor.appHelp")
+                  : t("desktop.editor.urlHelp")}
             </p>
           </div>
         )}
@@ -254,10 +257,10 @@ export function ButtonEditor({
         )}
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={onCancel}>
-            Cancelar
+            {t("common.cancel")}
           </Button>
           <Button onClick={save} className="dock-accent-bg">
-            <Check className="size-4" /> Guardar botón
+            <Check className="size-4" /> {t("desktop.editor.save")}
           </Button>
         </div>
       </CardContent>

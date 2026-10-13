@@ -3,6 +3,7 @@ import { QRCodeSVG } from "qrcode.react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { t } from "../../../../shared/i18n"
 
 export function PairingCard({ url, rotate }: { url?: string; rotate: () => void }) {
   return (
@@ -16,10 +17,8 @@ export function PairingCard({ url, rotate }: { url?: string; rotate: () => void 
             01 / 02
           </Badge>
         </div>
-        <CardTitle className="text-xl">Conecta tu móvil</CardTitle>
-        <CardDescription>
-          Escanea este QR una vez. Después, SpotDock se conectará automáticamente al iniciar.
-        </CardDescription>
+        <CardTitle className="text-xl">{t("desktop.pair.title")}</CardTitle>
+        <CardDescription>{t("desktop.pair.description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="mx-auto flex size-44 items-center justify-center rounded-xl bg-white p-2">
@@ -30,11 +29,9 @@ export function PairingCard({ url, rotate }: { url?: string; rotate: () => void 
           )}
         </div>
         <Button variant="outline" className="mt-5 w-full gap-2" onClick={rotate}>
-          <RefreshCw className="size-4" /> Renovar clave
+          <RefreshCw className="size-4" /> {t("desktop.pair.rotate")}
         </Button>
-        <p className="mt-2 text-center text-xs text-white/35">
-          Si la renuevas, los móviles deberán escanear el QR de nuevo.
-        </p>
+        <p className="mt-2 text-center text-xs text-white/35">{t("desktop.pair.rotateHelp")}</p>
       </CardContent>
     </Card>
   )

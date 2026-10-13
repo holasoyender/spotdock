@@ -18,6 +18,8 @@ import type {
 } from "../../../shared/protocol"
 import { validAddress } from "./address"
 import { readStored } from "../lib/storage"
+import { resolveLocale, t, type Locale } from "../../../shared/i18n"
+import { localizeNativeMessage } from "../../../shared/nativeMessages"
 
 export type View = "clock" | "player" | "deck"
 type ConnectionStatus = "offline" | "connecting" | "connected"
@@ -33,8 +35,8 @@ type ConnectionOptions = {
 }
 
 export const emptyTrack: Track = {
-  title: "Esperando música",
-  artist: "Inicia música en tu ordenador",
+  title: "",
+  artist: "",
   album: "",
   artwork: null,
   positionMs: 0,
@@ -63,6 +65,9 @@ export function useDockConnection({
     readStored("spotdock:config", defaultDockConfig),
   )
   const [weather, setWeather] = useState<Weather | null>(null)
+  const [desktopLocale, setDesktopLocale] = useState<Locale>(() =>
+    resolveLocale(readStored("spotdock:desktop-locale", "en-US")),
+  )
   const [actionMessage, setActionMessage] = useState("")
   const socket = useRef<WebSocket | null>(null)
   const lastTrack = useRef<Track>(emptyTrack)
@@ -109,7 +114,11 @@ export function useDockConnection({
           const message = JSON.parse(event.data) as Snapshot | TrackUpdate | ActionResult
           if (message.kind === "action_result") {
             setActionMessage(
-              message.ok ? "Acción ejecutada" : (message.message ?? "No se pudo ejecutar"),
+              message.ok
+                ? t("mobile.action.success")
+                : message.message
+                  ? localizeNativeMessage(message.message)
+                  : t("mobile.action.failed"),
             )
             return
           }
@@ -127,6 +136,9 @@ export function useDockConnection({
           setConfig(nextConfig)
           localStorage.setItem("spotdock:config", JSON.stringify(nextConfig))
           setWeather(message.weather ?? null)
+          const locale = resolveLocale(message.locale)
+          setDesktopLocale(locale)
+          localStorage.setItem("spotdock:desktop-locale", JSON.stringify(locale))
           applyTrack(message.track, nextConfig)
         } catch {
           /* ignore malformed messages */
@@ -193,6 +205,7 @@ export function useDockConnection({
     accent,
     config,
     weather,
+    desktopLocale,
     actionMessage,
     setActionMessage,
     sendAction,

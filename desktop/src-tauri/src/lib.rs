@@ -2,6 +2,7 @@ mod background;
 #[path = "../../../shared/discovery.rs"]
 mod discovery;
 mod dock;
+mod locale;
 mod media;
 mod spotify_web;
 
@@ -49,6 +50,8 @@ struct Snapshot {
     clients: usize,
     accent: String,
     config: dock::DockConfig,
+    language: String,
+    locale: &'static str,
     weather: Option<dock::Weather>,
     media: MediaStatus,
 }
@@ -66,6 +69,8 @@ struct Shared {
     clients: RwLock<usize>,
     accent: RwLock<String>,
     config: RwLock<dock::DockConfig>,
+    language: RwLock<String>,
+    system_locale: String,
     weather: RwLock<Option<dock::Weather>>,
     media_status: RwLock<MediaStatus>,
     config_path: OnceLock<PathBuf>,
@@ -227,8 +232,37 @@ async fn set_dock_config(
 }
 
 #[tauri::command]
-async fn search_locations(query: String) -> Result<Vec<dock::Location>, String> {
-    dock::search_locations(&query).await
+async fn set_language(
+    language: String,
+    shared: tauri::State<'_, Arc<Shared>>,
+    app: AppHandle,
+) -> Result<(), String> {
+    if !locale::valid_preference(&language) {
+        return Err("Unsupported language".into());
+    }
+    *shared.language.write().await = language;
+    persist(&shared).await?;
+    let effective = locale::resolve(&shared.language.read().await, &shared.system_locale);
+    background::update_tray(&app, effective).map_err(|error| error.to_string())?;
+    spotify_web::set_locale(effective);
+    publish(&shared, &app).await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn search_locations(
+    query: String,
+    shared: tauri::State<'_, Arc<Shared>>,
+) -> Result<Vec<dock::Location>, String> {
+    let code = {
+        let language = shared.language.read().await;
+        if locale::resolve(&language, &shared.system_locale) == locale::SPANISH {
+            "es"
+        } else {
+            "en"
+        }
+    };
+    dock::search_locations(&query, code).await
 }
 
 #[tauri::command]
@@ -262,18 +296,22 @@ async fn persist(shared: &Shared) -> Result<(), String> {
         &dock::SavedState {
             accent: shared.accent.read().await.clone(),
             config: shared.config.read().await.clone(),
+            language: shared.language.read().await.clone(),
             pairing_token: shared.token.read().await.clone(),
         },
     )
 }
 
 async fn snapshot(shared: &Shared) -> Snapshot {
+    let language = shared.language.read().await.clone();
     Snapshot {
         kind: "state",
         track: shared.track.read().await.clone(),
         clients: *shared.clients.read().await,
         accent: shared.accent.read().await.clone(),
         config: shared.config.read().await.clone(),
+        locale: locale::resolve(&language, &shared.system_locale),
+        language,
         weather: shared.weather.read().await.clone(),
         media: shared.media_status.read().await.clone(),
     }
@@ -401,6 +439,8 @@ pub fn run() {
         clients: RwLock::new(0),
         accent: RwLock::new("#b8ef64".into()),
         config: RwLock::new(dock::DockConfig::default()),
+        language: RwLock::new(locale::AUTO.into()),
+        system_locale: locale::system_locale(),
         weather: RwLock::new(None),
         media_status: RwLock::new(MediaStatus::default()),
         config_path: OnceLock::new(),
@@ -418,7 +458,6 @@ pub fn run() {
         .plugin(tauri_plugin_log::Builder::new().build())
         .manage(shared.clone())
         .setup(move |app| {
-            background::create_tray(app)?;
             let path = dock::config_path(&app.path().app_config_dir().map_err(|err| err.to_string())?);
             spotify_web::init(path.with_file_name("spotify.json"));
             let saved = dock::load(&path);
@@ -427,8 +466,13 @@ pub fn run() {
             tauri::async_runtime::block_on(async {
                 *shared.accent.write().await = saved.accent;
                 *shared.config.write().await = saved.config;
+                *shared.language.write().await = saved.language;
                 *shared.token.write().await = saved.pairing_token;
             });
+            let selected_language = tauri::async_runtime::block_on(shared.language.read()).clone();
+            let effective = locale::resolve(&selected_language, &shared.system_locale);
+            spotify_web::set_locale(effective);
+            background::create_tray(app, effective)?;
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(run_server(shared.clone()));
             tauri::async_runtime::spawn(run_discovery(shared.clone()));
@@ -484,6 +528,7 @@ pub fn run() {
             control,
             set_accent,
             set_dock_config,
+            set_language,
             search_locations,
             trigger_deck_button
         ])

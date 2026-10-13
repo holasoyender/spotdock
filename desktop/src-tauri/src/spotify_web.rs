@@ -22,6 +22,11 @@ use tokio::{
 use uuid::Uuid;
 
 static INSTANCE: OnceLock<Arc<SpotifyWeb>> = OnceLock::new();
+static SPANISH_CALLBACK: AtomicBool = AtomicBool::new(false);
+
+pub fn set_locale(locale: &str) {
+    SPANISH_CALLBACK.store(locale == crate::locale::SPANISH, Ordering::Relaxed);
+}
 const TOKEN_URL: &str = "https://accounts.spotify.com/api/token";
 const PLAYER_URL: &str = "https://api.spotify.com/v1/me/player";
 const SCOPES: &str =
@@ -720,13 +725,19 @@ impl SpotifyWeb {
 }
 
 async fn reply(stream: &mut tokio::net::TcpStream, success: bool) -> Result<(), String> {
-    let body = if success {
+    let spanish = SPANISH_CALLBACK.load(Ordering::Relaxed);
+    let body = if success && spanish {
         "<h1>Spotify conectado a SpotDock</h1><p>Ya puedes cerrar esta pestaña.</p>"
-    } else {
+    } else if success {
+        "<h1>Spotify connected to SpotDock</h1><p>You can close this tab now.</p>"
+    } else if spanish {
         "<h1>No se pudo conectar Spotify</h1><p>Vuelve a intentarlo desde SpotDock.</p>"
+    } else {
+        "<h1>Could not connect Spotify</h1><p>Try again from SpotDock.</p>"
     };
+    let language = if spanish { "es-ES" } else { "en-US" };
     let page = format!(
-        "<!doctype html><html lang=es><meta charset=utf-8><title>SpotDock</title><body style=\"font:16px sans-serif;background:#101514;color:#fff;padding:3rem\">{body}</body></html>"
+        "<!doctype html><html lang={language}><meta charset=utf-8><title>SpotDock</title><body style=\"font:16px sans-serif;background:#101514;color:#fff;padding:3rem\">{body}</body></html>"
     );
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{page}",

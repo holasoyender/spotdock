@@ -197,8 +197,14 @@ pub struct Weather {
 pub struct SavedState {
     pub accent: String,
     pub config: DockConfig,
+    #[serde(default = "default_language")]
+    pub language: String,
     #[serde(default = "new_pairing_token")]
     pub pairing_token: String,
+}
+
+fn default_language() -> String {
+    crate::locale::AUTO.into()
 }
 
 pub fn new_pairing_token() -> String {
@@ -210,6 +216,7 @@ impl Default for SavedState {
         Self {
             accent: "#b8ef64".into(),
             config: DockConfig::default(),
+            language: default_language(),
             pairing_token: new_pairing_token(),
         }
     }
@@ -223,6 +230,12 @@ pub fn load(path: &Path) -> SavedState {
     std::fs::read_to_string(path)
         .ok()
         .and_then(|data| serde_json::from_str::<SavedState>(&data).ok())
+        .map(|mut saved| {
+            if !crate::locale::valid_preference(&saved.language) {
+                saved.language = crate::locale::AUTO.into();
+            }
+            saved
+        })
         .filter(|saved| {
             is_hex(&saved.accent)
                 && saved.config.validate().is_ok()
@@ -248,7 +261,7 @@ struct GeocodeResponse {
     results: Option<Vec<Location>>,
 }
 
-pub async fn search_locations(query: &str) -> Result<Vec<Location>, String> {
+pub async fn search_locations(query: &str, language: &str) -> Result<Vec<Location>, String> {
     let query = query.trim();
     if query.chars().count() < 2 || query.chars().count() > 80 {
         return Err("Escribe al menos dos letras de la ciudad".into());
@@ -262,7 +275,7 @@ pub async fn search_locations(query: &str) -> Result<Vec<Location>, String> {
         .query(&[
             ("name", query),
             ("count", "6"),
-            ("language", "es"),
+            ("language", language),
             ("format", "json"),
         ])
         .send()
@@ -485,6 +498,7 @@ mod tests {
         });
         let upgraded: SavedState = serde_json::from_value(old).unwrap();
         assert_eq!(upgraded.pairing_token.len(), 32);
+        assert_eq!(upgraded.language, crate::locale::AUTO);
         let restored: SavedState =
             serde_json::from_str(&serde_json::to_string(&upgraded).unwrap()).unwrap();
         assert_eq!(restored.pairing_token, upgraded.pairing_token);

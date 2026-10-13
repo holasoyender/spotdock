@@ -12,8 +12,8 @@
     "check": "bun run --cwd desktop check && bun run --cwd mobile check",
     "test": "bun test",
     "build:frontends": "bun run --cwd desktop build && bun run --cwd mobile build",
-    "format": "prettier --write \"desktop/src/**/*.{ts,tsx}\" \"mobile/src/**/*.{ts,tsx}\" \"shared/*.ts\" \"tests/**/*.ts\" \"desktop/vite.config.ts\" \"mobile/vite.config.ts\"",
-    "format:check": "prettier --check \"desktop/src/**/*.{ts,tsx}\" \"mobile/src/**/*.{ts,tsx}\" \"shared/*.ts\" \"tests/**/*.ts\" \"desktop/vite.config.ts\" \"mobile/vite.config.ts\""
+    "format": "prettier --write \"desktop/src/**/*.{ts,tsx}\" \"mobile/src/**/*.{ts,tsx}\" \"shared/**/*.ts\" \"shared/locales/*.json\" \"tests/**/*.ts\" \"desktop/vite.config.ts\" \"mobile/vite.config.ts\"",
+    "format:check": "prettier --check \"desktop/src/**/*.{ts,tsx}\" \"mobile/src/**/*.{ts,tsx}\" \"shared/**/*.ts\" \"shared/locales/*.json\" \"tests/**/*.ts\" \"desktop/vite.config.ts\" \"mobile/vite.config.ts\""
   },
   "devDependencies": {
     "@types/node": "^26.6.4",

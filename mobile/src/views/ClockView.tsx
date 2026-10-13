@@ -11,6 +11,7 @@ import {
   Sun,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { i18n, t } from "../../../shared/i18n"
 import {
   type DockConfig,
   type Weather,
@@ -60,13 +61,17 @@ export function ClockView({
   onOpenPlayer: () => void
   onPair: () => void
 }) {
-  const time = now.toLocaleTimeString("es-ES", {
+  const time = now.toLocaleTimeString(i18n.resolvedLanguage, {
     hour: "2-digit",
     minute: "2-digit",
     second: config.showSeconds ? "2-digit" : undefined,
     hour12: config.hourFormat === "12",
   })
-  const date = now.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })
+  const date = now.toLocaleDateString(i18n.resolvedLanguage, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  })
   const hour = ((now.getHours() % 12) + now.getMinutes() / 60) * 30
   const minute = (now.getMinutes() + now.getSeconds() / 60) * 6
   const second = now.getSeconds() * 6
@@ -74,7 +79,7 @@ export function ClockView({
     <main
       className="relative flex min-h-0 flex-1 items-center gap-4 overflow-hidden"
       onClick={onOpenPlayer}
-      aria-label="Abrir reproductor"
+      aria-label={t("mobile.clock.openPlayer")}
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_32%_58%,var(--dock-accent),transparent_55%)] opacity-[0.055]" />
       <div className="relative flex min-w-0 flex-1 flex-col items-center justify-center py-3 text-center">
@@ -127,7 +132,7 @@ export function ClockView({
               onPair()
             }}
           >
-            Conectar con el PC
+            {t("mobile.clock.connectPc")}
           </Button>
         )}
       </div>
@@ -151,7 +156,7 @@ export function ClockView({
             <>
               <CloudSun className="size-14 text-white/20" />
               <p className="mt-3 text-sm text-white/40">
-                {connected ? "Cargando el tiempo…" : "El tiempo aparecerá al conectar el PC"}
+                {connected ? t("common.loadingWeather") : t("mobile.clock.weatherWhenConnected")}
               </p>
             </>
           )}

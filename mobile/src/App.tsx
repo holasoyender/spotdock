@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react"
+import { useTranslation } from "react-i18next"
 import { Format, requestPermissions, scan } from "@tauri-apps/plugin-barcode-scanner"
 import { DockNavigation } from "./components/dock/DockNavigation"
 import { MobileSettings } from "./components/dock/MobileSettings"
@@ -11,8 +12,17 @@ import { readStored } from "./lib/storage"
 import type { Preferences } from "./preferences"
 import { foregroundForColor, isHexColor, type DeckButton } from "../../shared/dock"
 import type { ControlAction as Action } from "../../shared/protocol"
+import {
+  isLanguagePreference,
+  resolveLocale,
+  setAppLocale,
+  t,
+  type LanguagePreference,
+} from "../../shared/i18n"
+import { localizeNativeMessage } from "../../shared/nativeMessages"
 
 export default function App() {
+  useTranslation()
   const [url, setUrl] = useState(() => readStored("spotdock:url", ""))
   const [manual, setManual] = useState(url)
   const [clock, setClock] = useState(new Date())
@@ -21,6 +31,10 @@ export default function App() {
     readStored("spotdock:preferences", { awake: true, brightness: 100, compact: false }),
   )
   const [settings, setSettings] = useState(false)
+  const [language, setLanguage] = useState<LanguagePreference>(() => {
+    const saved = readStored<unknown>("spotdock:language", "auto")
+    return isLanguagePreference(saved) ? saved : "auto"
+  })
   const [error, setError] = useState("")
   const [navigationVisible, setNavigationVisible] = useState(false)
   const navigationTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -34,12 +48,14 @@ export default function App() {
     accent,
     config,
     weather,
+    desktopLocale,
     actionMessage,
     setActionMessage,
     sendAction,
     resetConnection,
   } = useDockConnection({ url, setUrl, setManual, setView, seeking, lastActivity, setError })
   const connected = status === "connected"
+  const locale = language === "auto" ? desktopLocale : resolveLocale(language)
   const color = isHexColor(accent) ? accent : "#b8ef64"
   const theme = {
     "--dock-accent": color,
@@ -50,6 +66,14 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("spotdock:preferences", JSON.stringify(preferences))
   }, [preferences])
+  useEffect(() => {
+    setAppLocale(locale)
+    setError("")
+    setActionMessage("")
+  }, [locale])
+  useEffect(() => {
+    localStorage.setItem("spotdock:language", JSON.stringify(language))
+  }, [language])
   useEffect(() => {
     if (!preferences.awake || !("wakeLock" in navigator)) return
     let lock: WakeLockSentinel | undefined
@@ -116,7 +140,7 @@ export default function App() {
   }
   function saveAddress(value: string) {
     if (!validAddress(value)) {
-      setError("Introduce una dirección SpotDock válida de la red local.")
+      setError(t("mobile.error.address"))
       return
     }
     setError("")
@@ -126,12 +150,11 @@ export default function App() {
   async function scanCode() {
     try {
       const permission = await requestPermissions()
-      if (permission === "denied")
-        throw new Error("Activa el permiso de cámara para escanear el QR.")
+      if (permission === "denied") throw new Error(t("mobile.error.camera"))
       const result = await scan({ formats: [Format.QRCode], cameraDirection: "back" })
       saveAddress(result.content)
     } catch (cause) {
-      setError(String(cause))
+      setError(localizeNativeMessage(cause))
       setSettings(true)
     }
   }
@@ -147,7 +170,7 @@ export default function App() {
       return
     }
     if (!sendAction({ action: "deck", button_id: button.id }))
-      setActionMessage("Conecta el PC para usar este botón")
+      setActionMessage(t("mobile.error.notConnected"))
   }
   function forget() {
     resetConnection()
@@ -230,6 +253,9 @@ export default function App() {
         preferences={preferences}
         setPreference={setPreference}
         forget={forget}
+        language={language}
+        desktopLocale={desktopLocale}
+        onLanguageChange={setLanguage}
       />
     </div>
   )

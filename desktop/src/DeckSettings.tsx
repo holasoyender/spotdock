@@ -5,14 +5,21 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { DeckIcon } from "./DeckIcon"
 import { ButtonEditor, actionNames } from "./components/desktop/ButtonEditor"
-import { type DeckButton, type DockConfig, foregroundForColor } from "../../shared/dock"
+import { t } from "../../shared/i18n"
+import { localizeNativeMessage } from "../../shared/nativeMessages"
+import {
+  buttonDisplayLabel,
+  type DeckButton,
+  type DockConfig,
+  foregroundForColor,
+} from "../../shared/dock"
 
 type ChangeConfig = (config: DockConfig) => Promise<void>
 
 function newButton(): DeckButton {
   return {
     id: crypto.randomUUID(),
-    label: "Nuevo botón",
+    label: t("desktop.deck.newButton"),
     icon: "rocket",
     image: null,
     color: "#1c2420",
@@ -28,7 +35,7 @@ export function DeckSettings({ config, onChange }: { config: DockConfig; onChang
   const updateButtons = (buttons: DeckButton[]) => onChange({ ...config, buttons })
   async function add() {
     if (config.buttons.length >= 24) {
-      setError("Máximo de 24 botones.")
+      setError(t("desktop.deck.limit"))
       return
     }
     const item = newButton()
@@ -37,7 +44,7 @@ export function DeckSettings({ config, onChange }: { config: DockConfig; onChang
       setEditing(item.id)
       setError("")
     } catch (cause) {
-      setError(String(cause))
+      setError(localizeNativeMessage(cause))
     }
   }
   async function save(item: DeckButton) {
@@ -49,7 +56,7 @@ export function DeckSettings({ config, onChange }: { config: DockConfig; onChang
       await updateButtons(config.buttons.filter((item) => item.id !== id))
       if (editing === id) setEditing(null)
     } catch (cause) {
-      setError(String(cause))
+      setError(localizeNativeMessage(cause))
     }
   }
   async function move(index: number, offset: number) {
@@ -60,7 +67,7 @@ export function DeckSettings({ config, onChange }: { config: DockConfig; onChang
     try {
       await updateButtons(next)
     } catch (cause) {
-      setError(String(cause))
+      setError(localizeNativeMessage(cause))
     }
   }
   async function test(id: string) {
@@ -68,7 +75,7 @@ export function DeckSettings({ config, onChange }: { config: DockConfig; onChang
       setError("")
       await invoke("trigger_deck_button", { buttonId: id })
     } catch (cause) {
-      setError(String(cause))
+      setError(localizeNativeMessage(cause))
     }
   }
   return (
@@ -77,20 +84,18 @@ export function DeckSettings({ config, onChange }: { config: DockConfig; onChang
         <CardHeader>
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <CardTitle>Botonera</CardTitle>
-              <CardDescription>
-                Hasta 24 botones en el orden en que aparecerán en el dock.
-              </CardDescription>
+              <CardTitle>{t("desktop.deck.title")}</CardTitle>
+              <CardDescription>{t("desktop.deck.description")}</CardDescription>
             </div>
             <Button onClick={add} disabled={config.buttons.length >= 24} className="dock-accent-bg">
-              <Plus className="size-4" /> Añadir
+              <Plus className="size-4" /> {t("desktop.deck.add")}
             </Button>
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
           {config.buttons.length === 0 && (
             <p className="rounded-xl border border-dashed border-white/15 p-6 text-center text-sm text-white/40">
-              Añade el primer botón para empezar.
+              {t("desktop.deck.empty")}
             </p>
           )}
           {config.buttons.map((item, index) => (
@@ -109,9 +114,9 @@ export function DeckSettings({ config, onChange }: { config: DockConfig; onChang
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{item.label}</p>
+                <p className="truncate text-sm font-semibold">{buttonDisplayLabel(item)}</p>
                 <p className="truncate text-xs text-white/40">
-                  {actionNames[item.actionKind]} · {item.actionValue}
+                  {t(actionNames[item.actionKind])} · {item.actionValue}
                 </p>
               </div>
               <div className="flex shrink-0 gap-1">
@@ -120,7 +125,7 @@ export function DeckSettings({ config, onChange }: { config: DockConfig; onChang
                   size="icon"
                   onClick={() => move(index, -1)}
                   disabled={index === 0}
-                  aria-label="Subir"
+                  aria-label={t("desktop.deck.moveUp")}
                 >
                   <ArrowUp className="size-4" />
                 </Button>
@@ -129,7 +134,7 @@ export function DeckSettings({ config, onChange }: { config: DockConfig; onChang
                   size="icon"
                   onClick={() => move(index, 1)}
                   disabled={index === config.buttons.length - 1}
-                  aria-label="Bajar"
+                  aria-label={t("desktop.deck.moveDown")}
                 >
                   <ArrowDown className="size-4" />
                 </Button>
@@ -138,18 +143,22 @@ export function DeckSettings({ config, onChange }: { config: DockConfig; onChang
                   size="sm"
                   onClick={() => test(item.id)}
                   disabled={item.actionKind === "view"}
-                  title={item.actionKind === "view" ? "Cambia la vista del móvil" : "Probar acción"}
+                  title={
+                    item.actionKind === "view"
+                      ? t("desktop.deck.viewOnly")
+                      : t("desktop.deck.testAction")
+                  }
                 >
-                  Probar
+                  {t("desktop.deck.test")}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setEditing(item.id)}>
-                  Editar
+                  {t("common.edit")}
                 </Button>
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => remove(item.id)}
-                  aria-label="Eliminar"
+                  aria-label={t("common.delete")}
                 >
                   <Trash2 className="size-4" />
                 </Button>
@@ -177,19 +186,12 @@ export function DeckSettings({ config, onChange }: { config: DockConfig; onChang
               <div className="flex size-10 items-center justify-center rounded-xl dock-accent-soft dock-accent-text">
                 <ImagePlus className="size-5" />
               </div>
-              <CardTitle>Tu panel, a tu manera</CardTitle>
-              <CardDescription>
-                Selecciona un botón para cambiar su imagen, icono, texto, color y acción.
-              </CardDescription>
+              <CardTitle>{t("desktop.deck.emptyTitle")}</CardTitle>
+              <CardDescription>{t("desktop.deck.emptyDescription")}</CardDescription>
             </CardHeader>
             <CardContent>
-              <p className="text-sm leading-relaxed text-white/50">
-                Los botones pueden abrir páginas y aplicaciones del PC, enviar atajos a la ventana
-                activa, controlar la música o cambiar de vista en el móvil.
-              </p>
-              <p className="mt-4 text-xs text-white/35">
-                Los atajos y programas se ejecutan en Windows. Configura solo acciones de confianza.
-              </p>
+              <p className="text-sm leading-relaxed text-white/50">{t("desktop.deck.help")}</p>
+              <p className="mt-4 text-xs text-white/35">{t("desktop.deck.security")}</p>
             </CardContent>
           </Card>
         )}
@@ -198,7 +200,7 @@ export function DeckSettings({ config, onChange }: { config: DockConfig; onChang
             <Button
               key={item.id}
               variant="ghost"
-              title={item.label}
+              title={buttonDisplayLabel(item)}
               onClick={() => setEditing(item.id)}
               className="flex h-20 flex-col gap-1 rounded-xl border border-white/10 p-2 hover:border-white/30"
               style={{ backgroundColor: item.color, color: foregroundForColor(item.color) }}
@@ -209,7 +211,7 @@ export function DeckSettings({ config, onChange }: { config: DockConfig; onChang
                 <DeckIcon name={item.icon} className="size-6" />
               )}
               <span className="w-full truncate text-center text-[10px] font-medium">
-                {item.label}
+                {buttonDisplayLabel(item)}
               </span>
             </Button>
           ))}

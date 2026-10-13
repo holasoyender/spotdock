@@ -62,6 +62,14 @@ La barra superior de escritorio permite arrastrar, minimizar, maximizar/restaura
 
 Al cerrar la ventana del escritorio, SpotDock permanece en la bandeja de Windows y mantiene activos el servidor y la conexión con el móvil. Haz clic derecho en su icono para **Abrir SpotDock** o **Salir de SpotDock**; salir detiene también el servidor. En **Ajustes → Inicio y segundo plano** puedes activar **Iniciar con Windows**. Al iniciar sesión, la aplicación arrancará oculta en la bandeja y atenderá al móvil sin abrir la ventana. Si ejecutas SpotDock manualmente mientras ya está funcionando, se abrirá la ventana existente.
 
+## Idiomas
+
+SpotDock incluye **Español (España)** e **Inglés (Estados Unidos)**. El escritorio detecta el idioma de Windows al arrancar, incluso si se inicia oculto, y envía el idioma efectivo al móvil por la conexión local. En **Ajustes → Idioma** del escritorio puedes elegir Automático, Español o Inglés; la elección se guarda junto con el resto de la configuración. En los ajustes del móvil hay un selector independiente: Automático sigue el idioma recibido del PC y una elección explícita se guarda solo en ese móvil. Si el idioma detectado no está disponible, se utiliza inglés estadounidense.
+
+La interfaz usa i18next. Cada idioma tiene su propio archivo JSON: `shared/locales/en-US.json` para inglés y `shared/locales/es-ES.json` para español. Para corregir una traducción, edita solo el texto a la derecha de su clave en el archivo correspondiente. Conserva las claves y los marcadores de variables como `{{language}}` y `{{count}}`. Las claves terminadas en `_one` y `_other` son variantes de singular y plural.
+
+Para añadir un texto visible, crea la misma clave en ambos archivos y úsala mediante `t("clave")`. `shared/locales/index.ts` comprueba en TypeScript que los archivos tengan las mismas claves; `bun run check` y `bun run test` verifican las traducciones. Los datos del usuario, como nombres de canciones y etiquetas de botones personalizados, se muestran tal como se guardaron. Los textos de fecha y tiempo se formatean con el idioma efectivo. Los errores nativos conocidos se traducen en `shared/nativeMessages.ts`; si se añade un error nuevo en Rust, añade también su mensaje a ambos archivos de idioma.
+
 ## Si Spotify no aparece en el escritorio
 
 En **Reproducción**, SpotDock muestra el error de Windows cuando no encuentra una sesión de Spotify. Puedes abrir **Ajustes → Spotify en este ordenador** para activar la conexión alternativa:
@@ -105,6 +113,7 @@ Si no tienes NASM al compilar el escritorio, puedes ejecutar `$env:AWS_LC_SYS_NO
 | Ruta | Responsabilidad |
 | --- | --- |
 | `shared/dock.ts` y `shared/protocol.ts` | Configuración, utilidades y contrato de mensajes entre PC y móvil. |
+| `shared/i18n.ts`, `shared/locales/`, `shared/nativeMessages.ts` | Idiomas, traducciones y mensajes del proceso nativo. |
 | `desktop/src/App.tsx` | Estado de la interfaz, navegación y llamadas a comandos Tauri. |
 | `desktop/src/ClockSettings.tsx`, `DeckSettings.tsx`, `components/desktop/` | Ajustes y componentes visuales del escritorio. |
 | `mobile/src/connection/` | Validación de direcciones, WebSocket, reconexión y descubrimiento. |

@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react"
+import { useTranslation } from "react-i18next"
 import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
 import { Smartphone } from "lucide-react"
+import {
+  resolveLocale,
+  setAppLocale,
+  t,
+  type LanguagePreference,
+  type Locale,
+} from "../../shared/i18n"
+import { localizeNativeMessage } from "../../shared/nativeMessages"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
@@ -28,8 +37,8 @@ import type {
 } from "../../shared/protocol"
 
 const empty: Track = {
-  title: "Nada sonando todavía",
-  artist: "Abre Spotify en este ordenador",
+  title: "",
+  artist: "",
   album: "",
   artwork: null,
   positionMs: 0,
@@ -45,11 +54,20 @@ const initial: Snapshot = {
   clients: 0,
   accent: "#b8ef64",
   config: defaultDockConfig,
+  language: "auto",
+  locale: "en-US",
   weather: null,
   media: { source: "none", message: null },
 }
 
+function applyLocale(locale: Locale) {
+  const selected = resolveLocale(locale)
+  setAppLocale(selected)
+  localStorage.setItem("spotdock:locale", selected)
+}
+
 export default function App() {
+  useTranslation()
   const [view, setView] = useState<View>("player")
   const [pairing, setPairing] = useState<Pairing | null>(null)
   const [state, setState] = useState<Snapshot>(initial)
@@ -80,7 +98,7 @@ export default function App() {
   useEffect(() => {
     invoke<Pairing>("get_pairing")
       .then(setPairing)
-      .catch((cause) => setError(String(cause)))
+      .catch((cause) => setError(localizeNativeMessage(cause)))
     const refreshSpotify = () =>
       invoke<SpotifyAuthStatus>("get_spotify_status")
         .then((status) => {
@@ -91,6 +109,7 @@ export default function App() {
     refreshSpotify()
     invoke<Snapshot>("get_snapshot")
       .then((snapshot) => {
+        applyLocale(snapshot.locale)
         const saved = localStorage.getItem("spotdock:accent")
         setState(snapshot)
         setPosition(snapshot.track.positionMs)
@@ -100,15 +119,18 @@ export default function App() {
           isHexColor(saved) &&
           saved !== snapshot.accent
         )
-          invoke("set_accent", { accent: saved }).catch((cause) => setError(String(cause)))
+          invoke("set_accent", { accent: saved }).catch((cause) =>
+            setError(localizeNativeMessage(cause)),
+          )
         localStorage.setItem("spotdock:accent-migrated", "1")
       })
-      .catch((cause) => setError(String(cause)))
+      .catch((cause) => setError(localizeNativeMessage(cause)))
     let unlisten: (() => void) | undefined
     let unlistenTrack: (() => void) | undefined
     listen<string>("spotdock:state", (event) => {
       try {
         const snapshot = JSON.parse(event.payload) as Snapshot
+        applyLocale(snapshot.locale)
         setState(snapshot)
         if (!seeking.current) setPosition(snapshot.track.positionMs)
       } catch {
@@ -149,7 +171,7 @@ export default function App() {
     if (view !== "settings") return
     invoke<boolean>("get_autostart")
       .then(setAutostart)
-      .catch((cause) => setError(String(cause)))
+      .catch((cause) => setError(localizeNativeMessage(cause)))
   }, [view])
 
   const send = async (action: Action) => {
@@ -157,7 +179,7 @@ export default function App() {
       await invoke("control", { action })
       setError("")
     } catch (cause) {
-      setError(String(cause))
+      setError(localizeNativeMessage(cause))
     }
   }
   const rotate = async () => {
@@ -165,7 +187,7 @@ export default function App() {
       setPairing(await invoke<Pairing>("rotate_pairing"))
       setError("")
     } catch (cause) {
-      setError(String(cause))
+      setError(localizeNativeMessage(cause))
     }
   }
   const copy = async () => {
@@ -175,7 +197,7 @@ export default function App() {
       setCopied(true)
       setTimeout(() => setCopied(false), 1800)
     } catch (cause) {
-      setError(String(cause))
+      setError(localizeNativeMessage(cause))
     }
   }
   const chooseAccent = async (color: string) => {
@@ -186,7 +208,7 @@ export default function App() {
       await invoke("set_accent", { accent: color })
       setError("")
     } catch (cause) {
-      setError(String(cause))
+      setError(localizeNativeMessage(cause))
     }
   }
   const changeConfig = async (config: DockConfig) => {
@@ -195,10 +217,21 @@ export default function App() {
       await invoke("set_dock_config", { config })
       setError("")
     } catch (cause) {
-      setError(String(cause))
+      setError(localizeNativeMessage(cause))
       const current = await invoke<Snapshot>("get_snapshot")
       setState(current)
       throw cause
+    }
+  }
+  const changeLanguage = async (language: LanguagePreference) => {
+    try {
+      await invoke("set_language", { language })
+      const snapshot = await invoke<Snapshot>("get_snapshot")
+      applyLocale(snapshot.locale)
+      setState(snapshot)
+      setError("")
+    } catch (cause) {
+      setError(localizeNativeMessage(cause))
     }
   }
   const connectSpotify = async () => {
@@ -207,7 +240,7 @@ export default function App() {
       setSpotify((current) => ({ ...current, pending: true, error: null }))
       setError("")
     } catch (cause) {
-      setError(String(cause))
+      setError(localizeNativeMessage(cause))
     }
   }
   const disconnectSpotify = async () => {
@@ -217,7 +250,7 @@ export default function App() {
       setSpotifyClientId("")
       setError("")
     } catch (cause) {
-      setError(String(cause))
+      setError(localizeNativeMessage(cause))
     }
   }
   const changeAutostart = async (enabled: boolean) => {
@@ -226,7 +259,7 @@ export default function App() {
       setAutostart(await invoke<boolean>("set_autostart", { enabled }))
       setError("")
     } catch (cause) {
-      setError(String(cause))
+      setError(localizeNativeMessage(cause))
     } finally {
       setAutostartPending(false)
     }
@@ -256,9 +289,9 @@ export default function App() {
               <>
                 {state.media.source === "none" && state.media.message && (
                   <div className="mb-5 rounded-xl border border-amber-300/20 bg-amber-300/5 p-4 text-sm text-amber-100/80">
-                    <p className="font-medium">No se detecta la reproducción de Spotify</p>
+                    <p className="font-medium">{t("desktop.app.spotifyMissing")}</p>
                     <p className="mt-1 text-xs leading-relaxed text-white/50">
-                      {state.media.message}
+                      {localizeNativeMessage(state.media.message)}
                     </p>
                     <Button
                       variant="outline"
@@ -266,14 +299,12 @@ export default function App() {
                       className="mt-3"
                       onClick={() => setView("settings")}
                     >
-                      Configurar conexión alternativa
+                      {t("desktop.app.alternativeConnection")}
                     </Button>
                   </div>
                 )}
                 {state.media.source === "spotify_api" && (
-                  <p className="mb-4 text-xs dock-accent-text">
-                    Reproducción recibida desde la API de Spotify
-                  </p>
+                  <p className="mb-4 text-xs dock-accent-text">{t("desktop.app.spotifyApi")}</p>
                 )}
                 <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
                   <Player
@@ -306,22 +337,19 @@ export default function App() {
                     <div className="mb-2 flex size-10 items-center justify-center rounded-xl dock-accent-soft dock-accent-text">
                       <Smartphone className="size-5" />
                     </div>
-                    <CardTitle>Dispositivos en línea</CardTitle>
+                    <CardTitle>{t("desktop.app.onlineDevices")}</CardTitle>
                     <CardDescription>
                       {state.clients === 0
-                        ? "Todavía no hay móviles conectados."
-                        : `${state.clients} móvil${state.clients === 1 ? "" : "es"} conectado${state.clients === 1 ? "" : "s"} en esta red.`}
+                        ? t("desktop.app.noPhones")
+                        : t("desktop.app.connectedInNetwork", { count: state.clients })}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4 text-sm text-white/55">
                     <Separator />
-                    <p>1. Abre SpotDock en el móvil.</p>
-                    <p>2. Escanea el QR solo la primera vez.</p>
-                    <p>3. Coloca el teléfono en horizontal sobre el dock.</p>
-                    <p className="pt-2 text-xs text-white/35">
-                      Si el móvil no encuentra el PC, comprueba la Wi‑Fi y los permisos de red
-                      privada de Windows.
-                    </p>
+                    <p>{t("desktop.app.step1")}</p>
+                    <p>{t("desktop.app.step2")}</p>
+                    <p>{t("desktop.app.step3")}</p>
+                    <p className="pt-2 text-xs text-white/35">{t("desktop.app.networkHelp")}</p>
                   </CardContent>
                 </Card>
               </div>
@@ -346,9 +374,12 @@ export default function App() {
                 autostart={autostart}
                 autostartPending={autostartPending}
                 onAutostartChange={changeAutostart}
+                language={state.language}
+                locale={state.locale}
+                onLanguageChange={changeLanguage}
                 onDashboard={() =>
                   invoke("open_spotify_developer_dashboard").catch((cause) =>
-                    setError(String(cause)),
+                    setError(localizeNativeMessage(cause)),
                   )
                 }
               />

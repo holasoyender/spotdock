@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Segmented } from "./components/desktop/Segmented"
+import { i18n, t } from "../../shared/i18n"
+import { localizeNativeMessage } from "../../shared/nativeMessages"
 import {
   type DockConfig,
   type Location,
@@ -23,13 +25,17 @@ function ClockPreview({ config, weather }: { config: DockConfig; weather: Weathe
     const timer = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(timer)
   }, [])
-  const time = now.toLocaleTimeString("es-ES", {
+  const time = now.toLocaleTimeString(i18n.resolvedLanguage, {
     hour: "2-digit",
     minute: "2-digit",
     second: config.showSeconds ? "2-digit" : undefined,
     hour12: config.hourFormat === "12",
   })
-  const date = now.toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })
+  const date = now.toLocaleDateString(i18n.resolvedLanguage, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  })
   const hour = ((now.getHours() % 12) + now.getMinutes() / 60) * 30
   const minute = (now.getMinutes() + now.getSeconds() / 60) * 6
   const second = now.getSeconds() * 6
@@ -68,7 +74,7 @@ function ClockPreview({ config, weather }: { config: DockConfig; weather: Weathe
           <CloudSun className="size-4" />
           {weather
             ? `${weatherTemperature(weather.temperatureC, config.weatherUnit)} · ${weatherText(weather.code, weather.isDay)}`
-            : "Cargando el tiempo…"}
+            : t("common.loadingWeather")}
         </p>
       )}
     </div>
@@ -93,7 +99,7 @@ export function ClockSettings({
   }
   async function search() {
     if (query.trim().length < 2) {
-      setError("Escribe al menos dos letras.")
+      setError(t("desktop.clock.shortQuery"))
       return
     }
     setSearching(true)
@@ -101,9 +107,9 @@ export function ClockSettings({
     try {
       const found = await invoke<Location[]>("search_locations", { query })
       setLocations(found)
-      if (!found.length) setError("No hay resultados para esa búsqueda.")
+      if (!found.length) setError(t("desktop.clock.noResults"))
     } catch (cause) {
-      setError(`No se pudo buscar: ${String(cause)}`)
+      setError(t("desktop.clock.searchFailed", { error: localizeNativeMessage(cause) }))
     } finally {
       setSearching(false)
     }
@@ -113,38 +119,36 @@ export function ClockSettings({
       <div className="min-w-0 space-y-5">
         <Card className="border-white/8 bg-[#141817]">
           <CardHeader>
-            <CardTitle>Reloj del dock</CardTitle>
-            <CardDescription>
-              La vista habitual del móvil cuando no estás usando otra función.
-            </CardDescription>
+            <CardTitle>{t("desktop.clock.title")}</CardTitle>
+            <CardDescription>{t("desktop.clock.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-2">
-              <Label>Estilo de reloj</Label>
+              <Label>{t("desktop.clock.style")}</Label>
               <Segmented
                 value={config.clockStyle}
                 options={[
-                  { value: "digital", label: "Digital" },
-                  { value: "analog", label: "Analógico" },
+                  { value: "digital", label: t("desktop.clock.digital") },
+                  { value: "analog", label: t("desktop.clock.analog") },
                 ]}
                 onChange={(clockStyle) => patch({ clockStyle })}
               />
             </div>
             {config.clockStyle === "digital" && (
               <div className="space-y-2">
-                <Label>Diseño digital</Label>
+                <Label>{t("desktop.clock.digitalStyle")}</Label>
                 <Segmented
                   value={config.digitalStyle}
                   options={[
-                    { value: "bold", label: "Grande" },
-                    { value: "minimal", label: "Ligero" },
+                    { value: "bold", label: t("desktop.clock.bold") },
+                    { value: "minimal", label: t("desktop.clock.minimal") },
                   ]}
                   onChange={(digitalStyle) => patch({ digitalStyle })}
                 />
               </div>
             )}
             <div className="space-y-2">
-              <Label>Formato de hora</Label>
+              <Label>{t("desktop.clock.timeFormat")}</Label>
               <Segmented
                 value={config.hourFormat}
                 options={[
@@ -155,7 +159,7 @@ export function ClockSettings({
               />
             </div>
             <div className="flex items-center justify-between">
-              <Label htmlFor="clock-seconds">Mostrar segundos</Label>
+              <Label htmlFor="clock-seconds">{t("desktop.clock.showSeconds")}</Label>
               <Switch
                 id="clock-seconds"
                 checked={config.showSeconds}
@@ -163,7 +167,7 @@ export function ClockSettings({
               />
             </div>
             <div className="flex items-center justify-between">
-              <Label htmlFor="clock-date">Mostrar fecha</Label>
+              <Label htmlFor="clock-date">{t("desktop.clock.showDate")}</Label>
               <Switch
                 id="clock-date"
                 checked={config.showDate}
@@ -171,7 +175,7 @@ export function ClockSettings({
               />
             </div>
             <div className="flex items-center justify-between">
-              <Label htmlFor="clock-auto">Abrir reproductor al empezar música</Label>
+              <Label htmlFor="clock-auto">{t("desktop.clock.autoPlayer")}</Label>
               <Switch
                 id="clock-auto"
                 checked={config.autoPlayer}
@@ -179,7 +183,7 @@ export function ClockSettings({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="return-seconds">Volver al reloj tras la pausa · segundos</Label>
+              <Label htmlFor="return-seconds">{t("desktop.clock.returnAfter")}</Label>
               <Input
                 id="return-seconds"
                 type="number"
@@ -197,14 +201,12 @@ export function ClockSettings({
         </Card>
         <Card className="border-white/8 bg-[#141817]">
           <CardHeader>
-            <CardTitle>Tiempo actual</CardTitle>
-            <CardDescription>
-              La información se actualiza en el PC y se envía al móvil por la red local.
-            </CardDescription>
+            <CardTitle>{t("desktop.clock.weatherTitle")}</CardTitle>
+            <CardDescription>{t("desktop.clock.weatherDescription")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="flex items-center justify-between">
-              <Label htmlFor="show-weather">Mostrar el tiempo</Label>
+              <Label htmlFor="show-weather">{t("desktop.clock.showWeather")}</Label>
               <Switch
                 id="show-weather"
                 checked={config.showWeather}
@@ -212,7 +214,7 @@ export function ClockSettings({
               />
             </div>
             <div className="space-y-2">
-              <Label>Unidad de temperatura</Label>
+              <Label>{t("desktop.clock.temperatureUnit")}</Label>
               <Segmented
                 value={config.weatherUnit}
                 options={[
@@ -223,7 +225,7 @@ export function ClockSettings({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="city-search">Ciudad</Label>
+              <Label htmlFor="city-search">{t("desktop.clock.city")}</Label>
               <div className="flex gap-2">
                 <Input
                   id="city-search"
@@ -232,22 +234,23 @@ export function ClockSettings({
                   onKeyDown={(event) => {
                     if (event.key === "Enter") search()
                   }}
-                  placeholder="Busca una ciudad"
+                  placeholder={t("desktop.clock.searchCity")}
                 />
                 <Button
                   variant="outline"
                   onClick={search}
                   disabled={searching}
-                  aria-label="Buscar ciudad"
+                  aria-label={t("desktop.clock.searchCity")}
                 >
                   <Search className="size-4" />
                 </Button>
               </div>
               <p className="text-xs text-white/40">
-                Actual:{" "}
-                {config.weatherLocation
-                  ? `${config.weatherLocation.name}, ${config.weatherLocation.country}`
-                  : "sin ciudad"}
+                {t("desktop.clock.currentCity", {
+                  city: config.weatherLocation
+                    ? `${config.weatherLocation.name}, ${config.weatherLocation.country}`
+                    : t("desktop.clock.noCity"),
+                })}
               </p>
               {error && (
                 <p role="alert" className="text-xs text-rose-300">
@@ -274,17 +277,14 @@ export function ClockSettings({
                 </div>
               )}
             </div>
-            <p className="text-xs text-white/35">
-              Datos meteorológicos: Open-Meteo. La edición gratuita está destinada a uso no
-              comercial.
-            </p>
+            <p className="text-xs text-white/35">{t("desktop.clock.attribution")}</p>
           </CardContent>
         </Card>
       </div>
       <div className="min-w-0 space-y-4">
         <ClockPreview config={config} weather={weather} />
         <p className="px-2 text-xs leading-relaxed text-white/40">
-          Así aparecerá la vista de reposo en el móvil. Toca el reloj para abrir el reproductor.
+          {t("desktop.clock.previewHelp")}
         </p>
       </div>
     </div>

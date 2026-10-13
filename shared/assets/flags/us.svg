@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 190 100" role="img" aria-label="United States">
+  <g transform="scale(1 .769230769)">
+  <path fill="#fff" d="M0 0h190v130H0z"/>
+  <path fill="#b22234" d="M0 0h190v10H0zM0 20h190v10H0zM0 40h190v10H0zM0 60h190v10H0zM0 80h190v10H0zM0 100h190v10H0zM0 120h190v10H0z"/>
+  <path fill="#3c3b6e" d="M0 0h76v70H0z"/>
+  <defs>
+    <path id="star" fill="#fff" d="m0-2.6.6 1.8h1.9L1 .3l.6 1.8L0 1l-1.6 1.1L-1 .3l-1.5-1.1h1.9z"/>
+    <g id="six"><use href="#star" x="6"/><use href="#star" x="18"/><use href="#star" x="30"/><use href="#star" x="42"/><use href="#star" x="54"/><use href="#star" x="66"/></g>
+    <g id="five"><use href="#star" x="12"/><use href="#star" x="24"/><use href="#star" x="36"/><use href="#star" x="48"/><use href="#star" x="60"/></g>
+  </defs>
+  <use href="#six" y="7"/><use href="#five" y="14"/>
+  <use href="#six" y="21"/><use href="#five" y="28"/>
+  <use href="#six" y="35"/><use href="#five" y="42"/>
+  <use href="#six" y="49"/><use href="#five" y="56"/>
+  <use href="#six" y="63"/>
+  </g>
+</svg>

@@ -3,6 +3,7 @@ import { Music2, Pause, Play, Repeat, Repeat1, Shuffle, SkipBack, SkipForward } 
 import { Button } from "@/components/ui/button"
 import { Slider } from "@/components/ui/slider"
 import type { ControlAction as Action, Track } from "../../../shared/protocol"
+import { t } from "../../../shared/i18n"
 
 const timeOf = (ms: number) =>
   `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`
@@ -72,7 +73,7 @@ export function PlayerView({
         {track.artwork ? (
           <img
             src={track.artwork}
-            alt={`Carátula de ${track.album}`}
+            alt={t("common.imageAlt", { album: track.album })}
             className="h-full w-full object-cover"
           />
         ) : (
@@ -82,11 +83,11 @@ export function PlayerView({
       <div className="flex min-w-0 flex-1 flex-col justify-center">
         <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] dock-accent-text">
           <span className="size-1.5 rounded-full dock-accent-bg" />{" "}
-          {track.playing ? "REPRODUCIENDO" : "EN PAUSA"}
+          {track.playing ? t("mobile.player.playing") : t("mobile.player.paused")}
         </div>
-        <MarqueeTitle title={track.title || "Esperando música"} />
+        <MarqueeTitle title={track.title || t("common.waitingMusic")} />
         <p className="mt-2 truncate text-lg text-white/55 sm:text-xl">
-          {track.artist || "Inicia música en el ordenador"}
+          {track.artist || t("mobile.player.startMusic")}
         </p>
         <p className="mt-1 truncate text-xs text-white/35">{track.album}</p>
         <div className="mt-6">
@@ -116,7 +117,7 @@ export function PlayerView({
           <Button
             variant="ghost"
             size="icon-lg"
-            aria-label="Aleatorio"
+            aria-label={t("common.shuffle")}
             disabled={!track.available}
             onClick={() => send({ action: "shuffle", enabled: !track.shuffle })}
             className={track.shuffle ? "dock-accent-text" : "text-white/55"}
@@ -126,7 +127,7 @@ export function PlayerView({
           <Button
             variant="ghost"
             size="icon-lg"
-            aria-label="Canción anterior"
+            aria-label={t("mobile.player.previousTrack")}
             disabled={!track.available}
             onClick={() => send({ action: "previous" })}
           >
@@ -134,7 +135,7 @@ export function PlayerView({
           </Button>
           <Button
             size="icon-lg"
-            aria-label={track.playing ? "Pausar" : "Reproducir"}
+            aria-label={track.playing ? t("common.pause") : t("common.play")}
             disabled={!track.available}
             onClick={() => send({ action: "play_pause" })}
             className="size-16 rounded-full dock-accent-bg dock-accent-hover"
@@ -148,7 +149,7 @@ export function PlayerView({
           <Button
             variant="ghost"
             size="icon-lg"
-            aria-label="Siguiente canción"
+            aria-label={t("mobile.player.nextTrack")}
             disabled={!track.available}
             onClick={() => send({ action: "next" })}
           >
@@ -157,7 +158,7 @@ export function PlayerView({
           <Button
             variant="ghost"
             size="icon-lg"
-            aria-label="Repetición"
+            aria-label={t("mobile.player.repeatMode")}
             disabled={!track.available}
             onClick={() =>
               send({
