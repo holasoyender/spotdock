@@ -7,7 +7,7 @@
   "scripts": {
     "dev:desktop": "bun run --cwd desktop tauri dev",
     "dev:mobile": "bun run --cwd mobile tauri android dev",
-    "build:desktop": "bun run --cwd desktop tauri build --release",
+    "build:desktop": "bun run --cwd desktop tauri build",
     "build:android": "bun run --cwd mobile tauri android build --apk --ci",
     "check": "bun run --cwd desktop check && bun run --cwd mobile check",
     "test": "bun test",
