@@ -1,5 +1,8 @@
 package com.spotdock.mobile
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -9,6 +12,7 @@ class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     hideSystemBars()
+    requestLocalNetworkAccess()
   }
 
   override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -27,5 +31,11 @@ class MainActivity : TauriActivity() {
       systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
       hide(WindowInsetsCompat.Type.systemBars())
     }
+  }
+
+  private fun requestLocalNetworkAccess() {
+    if (Build.VERSION.SDK_INT < 37) return
+    if (checkSelfPermission(Manifest.permission.ACCESS_LOCAL_NETWORK) == PackageManager.PERMISSION_GRANTED) return
+    requestPermissions(arrayOf(Manifest.permission.ACCESS_LOCAL_NETWORK), 1001)
   }
 }
