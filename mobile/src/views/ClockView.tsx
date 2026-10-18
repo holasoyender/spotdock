@@ -81,7 +81,7 @@ export function ClockView({
       onClick={onOpenPlayer}
       aria-label={t("mobile.clock.openPlayer")}
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_32%_58%,var(--dock-accent),transparent_55%)] opacity-[0.055]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_32%_58%,var(--dock-accent),transparent_55%)] opacity-[0.12]" />
       <div className="relative flex min-w-0 flex-1 flex-col items-center justify-center py-3 text-center">
         {config.clockStyle === "analog" ? (
           <div className="relative aspect-square h-[min(62vh,360px)] max-h-full rounded-full border-2 border-white/20 bg-white/[0.025] shadow-[0_25px_90px_rgba(0,0,0,.35)]">

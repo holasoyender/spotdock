@@ -61,6 +61,37 @@ export type DockConfig = {
   autoPlayer: boolean
   returnAfterSeconds: number
   buttons: DeckButton[]
+  screenSchedule: ScreenSchedule
+}
+
+export type ScreenDay = { enabled: boolean; on: string; off: string }
+/** Monday first. An on time after off keeps the screen lit across midnight. */
+export type ScreenSchedule = ScreenDay[]
+
+export const defaultScreenSchedule: ScreenSchedule = Array.from({ length: 7 }, () => ({
+  enabled: false,
+  on: "07:00",
+  off: "23:00",
+}))
+
+export function isScreenOff(schedule: ScreenSchedule | undefined, now: Date): boolean {
+  const index = (now.getDay() + 6) % 7
+  const day = schedule?.[index]
+  if (!day?.enabled) return false
+  const time = now.getHours() * 60 + now.getMinutes()
+  const minutes = (value: string) => {
+    const [hour, minute] = value.split(":").map(Number)
+    return hour * 60 + minute
+  }
+  const on = minutes(day.on)
+  const off = minutes(day.off)
+  const todayIsOn = time >= on && (on > off || time < off)
+  const previous = schedule?.[(index + 6) % 7]
+  const yesterdayContinues =
+    previous?.enabled &&
+    minutes(previous.on) > minutes(previous.off) &&
+    time < minutes(previous.off)
+  return !todayIsOn && !yesterdayContinues
 }
 
 export const defaultDockConfig: DockConfig = {
@@ -81,6 +112,7 @@ export const defaultDockConfig: DockConfig = {
   autoPlayer: true,
   returnAfterSeconds: 30,
   buttons: [],
+  screenSchedule: defaultScreenSchedule,
 }
 
 export function weatherText(code: number, isDay: boolean) {

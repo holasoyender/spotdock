@@ -21,6 +21,8 @@ import { DesktopSidebar, PageHeading, type View } from "./components/desktop/Des
 import { Player } from "./components/desktop/Player"
 import { PairingCard } from "./components/desktop/PairingCard"
 import { SettingsPage } from "./components/desktop/SettingsPage"
+import { NotificationsPage } from "./components/desktop/NotificationsPage"
+import { ScreenSchedulePage } from "./components/desktop/ScreenSchedulePage"
 import {
   defaultDockConfig,
   foregroundForColor,
@@ -54,6 +56,8 @@ const initial: Snapshot = {
   clients: 0,
   accent: "#b8ef64",
   config: defaultDockConfig,
+  screenOff: false,
+  screenAt: 0,
   language: "auto",
   locale: "en-US",
   weather: null,
@@ -328,6 +332,12 @@ export default function App() {
             )}
 
             {view === "deck" && <DeckSettings config={state.config} onChange={changeConfig} />}
+
+            {view === "notifications" && <NotificationsPage clients={state.clients} />}
+
+            {view === "schedule" && (
+              <ScreenSchedulePage config={state.config} onChange={changeConfig} />
+            )}
 
             {view === "devices" && (
               <div className="grid min-w-0 gap-5 md:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">

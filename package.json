@@ -8,6 +8,7 @@
     "dev:desktop": "bun run --cwd desktop tauri dev",
     "dev:mobile": "bun run --cwd mobile tauri android dev",
     "build:desktop": "bun run --cwd desktop tauri build",
+    "build:desktop:msix": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-desktop-msix.ps1",
     "build:android": "bun run --cwd mobile tauri android build --apk --ci",
     "check": "bun run --cwd desktop check && bun run --cwd mobile check",
     "test": "bun test",

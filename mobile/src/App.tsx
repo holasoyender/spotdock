@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { Format, requestPermissions, scan } from "@tauri-apps/plugin-barcode-scanner"
 import { DockNavigation } from "./components/dock/DockNavigation"
 import { MobileSettings } from "./components/dock/MobileSettings"
+import { NotificationBanner } from "./components/dock/NotificationBanner"
 import { ClockView } from "./views/ClockView"
 import { PlayerView } from "./views/PlayerView"
 import { DeckView } from "./views/DeckView"
@@ -10,7 +11,7 @@ import { validAddress } from "./connection/address"
 import { useDockConnection, type View } from "./connection/useDockConnection"
 import { readStored } from "./lib/storage"
 import type { Preferences } from "./preferences"
-import { foregroundForColor, isHexColor, type DeckButton } from "../../shared/dock"
+import { foregroundForColor, isHexColor, isScreenOff, type DeckButton } from "../../shared/dock"
 import type { ControlAction as Action } from "../../shared/protocol"
 import {
   isLanguagePreference,
@@ -50,11 +51,15 @@ export default function App() {
     weather,
     desktopLocale,
     actionMessage,
+    notifications,
+    setNotifications,
+    screenOff: desktopScreenOff,
     setActionMessage,
     sendAction,
     resetConnection,
   } = useDockConnection({ url, setUrl, setManual, setView, seeking, lastActivity, setError })
   const connected = status === "connected"
+  const screenOff = connected ? desktopScreenOff : isScreenOff(config.screenSchedule, clock)
   const locale = language === "auto" ? desktopLocale : resolveLocale(language)
   const color = isHexColor(accent) ? accent : "#b8ef64"
   const theme = {
@@ -74,6 +79,11 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("spotdock:language", JSON.stringify(language))
   }, [language])
+  useEffect(() => {
+    if (notifications.length === 0) return
+    const timer = setTimeout(() => setNotifications((current) => current.slice(1)), 5000)
+    return () => clearTimeout(timer)
+  }, [notifications])
   useEffect(() => {
     if (!preferences.awake || !("wakeLock" in navigator)) return
     let lock: WakeLockSentinel | undefined
@@ -184,22 +194,26 @@ export default function App() {
     setPreferences((current) => ({ ...current, [key]: value }))
 
   return (
-    <div
-      className="dark relative h-screen overflow-hidden bg-[#090b0b] text-white"
-      style={theme}
-      onPointerDown={revealNavigation}
-    >
+    <div className="dark relative h-screen overflow-hidden bg-[#090b0b] text-white" style={theme}>
       {view === "player" && connected && track.artwork && (
         <div className="pointer-events-none absolute inset-0 overflow-hidden">
           <img
             src={track.artwork}
             alt=""
-            className="absolute left-[12%] top-[-45%] h-[190%] w-[76%] scale-125 object-cover opacity-[0.18] blur-[100px] saturate-125"
+            className="absolute left-[12%] top-[-45%] h-[190%] w-[76%] scale-125 object-cover opacity-[0.3] blur-[90px] saturate-150"
           />
-          <div className="absolute inset-0 bg-[#090b0b]/35" />
+          <div className="absolute inset-0 bg-[#090b0b]/20" />
         </div>
       )}
       <div className="relative flex h-full min-h-0 flex-col px-5 py-4 sm:px-9 sm:py-5">
+        {!navigationVisible && !settings && (
+          <button
+            type="button"
+            aria-label={t("mobile.nav.show")}
+            onPointerDown={revealNavigation}
+            className="absolute inset-x-0 top-0 z-10 h-20 bg-transparent sm:h-24"
+          />
+        )}
         <DockNavigation
           navigationVisible={navigationVisible}
           view={view}
@@ -257,6 +271,10 @@ export default function App() {
         desktopLocale={desktopLocale}
         onLanguageChange={setLanguage}
       />
+      {notifications[0] && (
+        <NotificationBanner key={notifications[0].id} notification={notifications[0]} />
+      )}
+      {screenOff && <div className="fixed inset-0 z-[100] bg-black" aria-hidden="true" />}
     </div>
   )
 }

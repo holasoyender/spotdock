@@ -12,6 +12,8 @@ import type {
   ActionResult,
   ControlAction,
   DeckAction,
+  NotificationEvent,
+  ScreenEvent,
   Snapshot,
   Track,
   TrackUpdate,
@@ -69,9 +71,12 @@ export function useDockConnection({
     resolveLocale(readStored("spotdock:desktop-locale", "en-US")),
   )
   const [actionMessage, setActionMessage] = useState("")
+  const [notifications, setNotifications] = useState<NotificationEvent[]>([])
+  const [screenOff, setScreenOff] = useState(false)
   const socket = useRef<WebSocket | null>(null)
   const lastTrack = useRef<Track>(emptyTrack)
   const configRef = useRef(config)
+  const lastScreenAt = useRef(0)
 
   useEffect(() => {
     if (!url || !validAddress(url)) {
@@ -105,13 +110,34 @@ export function useDockConnection({
       socket.current = ws
       ws.onopen = () => {
         if (!stopped) {
+          lastScreenAt.current = 0
           setStatus("connected")
           setError("")
         }
       }
       ws.onmessage = (event) => {
         try {
-          const message = JSON.parse(event.data) as Snapshot | TrackUpdate | ActionResult
+          const message = JSON.parse(event.data) as
+            | Snapshot
+            | TrackUpdate
+            | ActionResult
+            | NotificationEvent
+            | ScreenEvent
+          if (message.kind === "notification") {
+            if (typeof message.sender === "string" && typeof message.body === "string") {
+              setNotifications((current) => [...current.slice(-19), message])
+              if (ws.readyState === WebSocket.OPEN)
+                ws.send(JSON.stringify({ action: "notification_ack", id: message.id }))
+            }
+            return
+          }
+          if (message.kind === "screen") {
+            if (message.screenAt >= lastScreenAt.current) {
+              lastScreenAt.current = message.screenAt
+              setScreenOff(message.screenOff)
+            }
+            return
+          }
           if (message.kind === "action_result") {
             setActionMessage(
               message.ok
@@ -132,6 +158,10 @@ export function useDockConnection({
             localStorage.setItem("spotdock:accent", JSON.stringify(message.accent))
           }
           const nextConfig = message.config ?? defaultDockConfig
+          if (message.screenAt >= lastScreenAt.current) {
+            lastScreenAt.current = message.screenAt
+            setScreenOff(Boolean(message.screenOff))
+          }
           configRef.current = nextConfig
           setConfig(nextConfig)
           localStorage.setItem("spotdock:config", JSON.stringify(nextConfig))
@@ -207,6 +237,9 @@ export function useDockConnection({
     weather,
     desktopLocale,
     actionMessage,
+    notifications,
+    setNotifications,
+    screenOff,
     setActionMessage,
     sendAction,
     resetConnection,

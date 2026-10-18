@@ -1,9 +1,26 @@
-import { Clock3, Grid3X3, Music2, Settings2, Smartphone, Wifi, type LucideIcon } from "lucide-react"
+import {
+  BellRing,
+  Clock3,
+  Grid3X3,
+  Music2,
+  Moon,
+  Settings2,
+  Smartphone,
+  Wifi,
+  type LucideIcon,
+} from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { t, type TranslationKey } from "../../../../shared/i18n"
 
-export type View = "player" | "clock" | "deck" | "devices" | "settings"
+export type View =
+  | "player"
+  | "clock"
+  | "deck"
+  | "devices"
+  | "notifications"
+  | "schedule"
+  | "settings"
 
 const pages: {
   view: View
@@ -44,6 +61,22 @@ const pages: {
     heading: "desktop.heading.devices",
     description: "desktop.heading.devicesDescription",
     icon: Smartphone,
+  },
+  {
+    view: "notifications",
+    label: "desktop.nav.notifications",
+    compactLabel: "desktop.nav.notifications",
+    heading: "desktop.nav.notifications",
+    description: "desktop.heading.notificationsDescription",
+    icon: BellRing,
+  },
+  {
+    view: "schedule",
+    label: "desktop.nav.schedule",
+    compactLabel: "desktop.nav.schedule",
+    heading: "desktop.nav.schedule",
+    description: "desktop.heading.scheduleDescription",
+    icon: Moon,
   },
   {
     view: "settings",

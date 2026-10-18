@@ -29,6 +29,8 @@ export type Snapshot = {
   clients: number
   accent: string
   config: DockConfig
+  screenOff: boolean
+  screenAt: number
   language: LanguagePreference
   locale: Locale
   weather: Weather | null
@@ -46,6 +48,31 @@ export type ActionResult = {
   ok: boolean
   message?: string | null
 }
+
+export type NotificationSettings = {
+  enabled: boolean
+  discord: boolean
+  whatsapp: boolean
+}
+
+export type NotificationStatus = {
+  access: "allowed" | "unpackaged" | "denied" | "unspecified" | "unavailable"
+  settings: NotificationSettings
+}
+
+/** Transient desktop notification; intentionally absent from the state snapshot. */
+export type NotificationEvent = {
+  kind: "notification"
+  id: string
+  app: "discord" | "whatsapp" | "spotdock"
+  sender: string
+  body: string
+  image: string | null
+}
+
+export type ScreenEvent = { kind: "screen"; screenOff: boolean; screenAt: number }
+export type NotificationAck = { action: "notification_ack"; id: string }
+export type NotificationTestResult = { connected: number; acknowledged: number }
 
 export type Pairing = { url: string; clients: number; port: number }
 export type SpotifyAuthStatus = {

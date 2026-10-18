@@ -5,6 +5,8 @@ mod dock;
 mod locale;
 mod media;
 mod media_source;
+mod notification_delivery;
+mod notifications;
 mod spotify_web;
 
 use axum::{
@@ -16,6 +18,7 @@ use axum::{
     response::IntoResponse,
     routing::get,
 };
+use chrono::{Datelike, Local, Timelike};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -51,6 +54,8 @@ struct Snapshot {
     clients: usize,
     accent: String,
     config: dock::DockConfig,
+    screen_off: bool,
+    screen_at: i64,
     language: String,
     locale: &'static str,
     weather: Option<dock::Weather>,
@@ -74,6 +79,8 @@ struct Shared {
     system_locale: String,
     weather: RwLock<Option<dock::Weather>>,
     media_status: RwLock<MediaStatus>,
+    notifications: RwLock<notifications::NotificationSettings>,
+    notification_delivery: notification_delivery::NotificationDelivery,
     config_path: OnceLock<PathBuf>,
     refresh_weather: Notify,
     updates: broadcast::Sender<String>,
@@ -108,6 +115,20 @@ pub enum Control {
 struct DeckRequest {
     action: String,
     button_id: String,
+}
+
+#[derive(Deserialize)]
+struct NotificationAck {
+    action: String,
+    id: String,
+}
+
+fn scheduled_screen_off(config: &dock::DockConfig, now: &chrono::DateTime<Local>) -> bool {
+    dock::screen_off(
+        &config.screen_schedule,
+        now.weekday().num_days_from_monday() as usize,
+        now.hour() * 60 + now.minute(),
+    )
 }
 
 fn local_ip() -> IpAddr {
@@ -168,6 +189,54 @@ fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
     }
     .map_err(|error| error.to_string())?;
     autolaunch.is_enabled().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn get_notification_status(
+    shared: tauri::State<'_, Arc<Shared>>,
+) -> Result<notifications::NotificationStatus, String> {
+    Ok(notifications::NotificationStatus {
+        access: notifications::access(),
+        settings: shared.notifications.read().await.clone(),
+    })
+}
+
+#[tauri::command]
+async fn request_notification_access(app: AppHandle) -> Result<&'static str, String> {
+    notifications::request_access(app).await
+}
+
+#[tauri::command]
+async fn set_notification_settings(
+    settings: notifications::NotificationSettings,
+    shared: tauri::State<'_, Arc<Shared>>,
+) -> Result<(), String> {
+    *shared.notifications.write().await = settings;
+    persist(&shared).await
+}
+
+#[tauri::command]
+async fn send_test_notification(
+    sender: String,
+    body: String,
+    shared: tauri::State<'_, Arc<Shared>>,
+) -> Result<notification_delivery::TestResult, String> {
+    if sender.len() > 100 || body.len() > 300 {
+        return Err("Test notification is too long".into());
+    }
+    let event = notifications::NotificationEvent {
+        kind: "notification",
+        id: uuid::Uuid::new_v4().to_string(),
+        app: "spotdock".into(),
+        sender,
+        body,
+        image: None,
+    };
+    let message = serde_json::to_string(&event).map_err(|error| error.to_string())?;
+    Ok(shared
+        .notification_delivery
+        .send_test(&event.id, &message)
+        .await)
 }
 
 #[tauri::command]
@@ -319,18 +388,23 @@ async fn persist(shared: &Shared) -> Result<(), String> {
             config: shared.config.read().await.clone(),
             language: shared.language.read().await.clone(),
             pairing_token: shared.token.read().await.clone(),
+            notifications: shared.notifications.read().await.clone(),
         },
     )
 }
 
 async fn snapshot(shared: &Shared) -> Snapshot {
     let language = shared.language.read().await.clone();
+    let config = shared.config.read().await.clone();
+    let now = Local::now();
     Snapshot {
         kind: "state",
         track: shared.track.read().await.clone(),
         clients: *shared.clients.read().await,
         accent: shared.accent.read().await.clone(),
-        config: shared.config.read().await.clone(),
+        screen_off: scheduled_screen_off(&config, &now),
+        screen_at: now.timestamp_millis(),
+        config,
         locale: locale::resolve(&language, &shared.system_locale),
         language,
         weather: shared.weather.read().await.clone(),
@@ -373,10 +447,17 @@ async fn ws_client(socket: WebSocket, shared: Arc<Shared>) {
     *shared.clients.write().await += 1;
     let (mut sink, mut stream) = socket.split();
     let mut updates = shared.updates.subscribe();
+    let (client_id, mut notification_queue) = shared.notification_delivery.register().await;
     let first = serde_json::to_string(&snapshot(&shared).await).unwrap_or_default();
     if sink.send(Message::Text(first.into())).await.is_ok() {
         loop {
             tokio::select! {
+                biased;
+                notification = notification_queue.recv() => {
+                    if let Some(notification) = notification {
+                        if sink.send(Message::Text(notification.into())).await.is_err() { break; }
+                    }
+                }
                 update = updates.recv() => {
                     if let Ok(update) = update {
                         if sink.send(Message::Text(update.into())).await.is_err() { break; }
@@ -385,7 +466,11 @@ async fn ws_client(socket: WebSocket, shared: Arc<Shared>) {
                 received = stream.next() => {
                     match received {
                         Some(Ok(Message::Text(text))) => {
-                            if let Ok(request) = serde_json::from_str::<DeckRequest>(&text) {
+                            if let Ok(ack) = serde_json::from_str::<NotificationAck>(&text) {
+                                if ack.action == "notification_ack" && ack.id.len() <= 64 {
+                                    shared.notification_delivery.acknowledge(client_id, ack.id);
+                                }
+                            } else if let Ok(request) = serde_json::from_str::<DeckRequest>(&text) {
                                 if request.action == "deck" {
                                     let result = run_button(&shared, &request.button_id).await;
                                     let reply = serde_json::json!({ "kind": "action_result", "buttonId": request.button_id, "ok": result.is_ok(), "message": result.err() });
@@ -401,6 +486,7 @@ async fn ws_client(socket: WebSocket, shared: Arc<Shared>) {
             }
         }
     }
+    shared.notification_delivery.unregister(client_id).await;
     *shared.clients.write().await -= 1;
 }
 
@@ -464,6 +550,8 @@ pub fn run() {
         system_locale: locale::system_locale(),
         weather: RwLock::new(None),
         media_status: RwLock::new(MediaStatus::default()),
+        notifications: RwLock::new(notifications::NotificationSettings::default()),
+        notification_delivery: notification_delivery::NotificationDelivery::default(),
         config_path: OnceLock::new(),
         refresh_weather: Notify::new(),
         updates,
@@ -490,6 +578,7 @@ pub fn run() {
                 *shared.config.write().await = saved.config;
                 *shared.language.write().await = saved.language;
                 *shared.token.write().await = saved.pairing_token;
+                *shared.notifications.write().await = saved.notifications;
             });
             let selected_language = tauri::async_runtime::block_on(shared.language.read()).clone();
             let effective = locale::resolve(&selected_language, &shared.system_locale);
@@ -498,6 +587,50 @@ pub fn run() {
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(run_server(shared.clone()));
             tauri::async_runtime::spawn(run_discovery(shared.clone()));
+            let schedule_shared = shared.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut previous = None;
+                loop {
+                    let now = Local::now();
+                    let config = schedule_shared.config.read().await;
+                    let off = scheduled_screen_off(&*config, &now);
+                    drop(config);
+                    if previous.is_some_and(|old| old != off) {
+                        let message = serde_json::json!({ "kind": "screen", "screenOff": off, "screenAt": now.timestamp_millis() }).to_string();
+                        schedule_shared.notification_delivery.send_all(&message).await;
+                    }
+                    previous = Some(off);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                }
+            });
+            let notification_shared = shared.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut changes = notifications::NotificationChanges::default();
+                let mut previous_settings: Option<notifications::NotificationSettings> = None;
+                loop {
+                    let settings = notification_shared.notifications.read().await.clone();
+                    if previous_settings.as_ref().is_none_or(|previous| previous != &settings) {
+                        changes.reset();
+                        previous_settings = Some(settings.clone());
+                    }
+                    if settings.enabled && notifications::access() == "allowed" {
+                        match tokio::task::spawn_blocking(move || notifications::read(&settings)).await {
+                            Ok(Ok(current)) => {
+                                for event in changes.accept(current) {
+                                    if let Ok(message) = serde_json::to_string(&event) {
+                                        notification_shared.notification_delivery.send_all(&message).await;
+                                    }
+                                }
+                            }
+                            Ok(Err(error)) => { log::warn!("Notification listener: {error}"); changes.reset(); }
+                            Err(error) => { log::warn!("Notification worker: {error}"); changes.reset(); }
+                        }
+                    } else {
+                        changes.reset();
+                    }
+                    tokio::time::sleep(Duration::from_millis(1200)).await;
+                }
+            });
             let weather_shared = shared.clone();
             let weather_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -543,6 +676,10 @@ pub fn run() {
             get_snapshot,
             get_autostart,
             set_autostart,
+            get_notification_status,
+            request_notification_access,
+            set_notification_settings,
+            send_test_notification,
             get_spotify_status,
             get_media_sessions,
             set_media_session,

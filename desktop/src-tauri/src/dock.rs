@@ -58,6 +58,62 @@ pub struct DockConfig {
     pub auto_player: bool,
     pub return_after_seconds: u32,
     pub buttons: Vec<DeckButton>,
+    #[serde(default = "default_screen_schedule")]
+    pub screen_schedule: Vec<ScreenDay>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenDay {
+    pub enabled: bool,
+    pub on: String,
+    pub off: String,
+}
+
+fn default_screen_schedule() -> Vec<ScreenDay> {
+    (0..7)
+        .map(|_| ScreenDay {
+            enabled: false,
+            on: "07:00".into(),
+            off: "23:00".into(),
+        })
+        .collect()
+}
+
+fn minutes(value: &str) -> Option<u32> {
+    let (hour, minute) = value.split_once(':')?;
+    if hour.len() != 2 || minute.len() != 2 {
+        return None;
+    }
+    let hour = hour.parse::<u32>().ok()?;
+    let minute = minute.parse::<u32>().ok()?;
+    (hour < 24 && minute < 60).then_some(hour * 60 + minute)
+}
+
+pub fn screen_off(schedule: &[ScreenDay], monday_index: usize, minute_of_day: u32) -> bool {
+    let Some(day) = schedule.get(monday_index) else {
+        return false;
+    };
+    if !day.enabled {
+        return false;
+    }
+    let (Some(on), Some(off)) = (minutes(&day.on), minutes(&day.off)) else {
+        return false;
+    };
+    let today_is_on = minute_of_day >= on && (on > off || minute_of_day < off);
+    let previous = schedule.get((monday_index + 6) % 7);
+    let yesterday_continues = previous.is_some_and(|previous| {
+        if !previous.enabled {
+            return false;
+        }
+        match (minutes(&previous.on), minutes(&previous.off)) {
+            (Some(previous_on), Some(previous_off)) => {
+                previous_on > previous_off && minute_of_day < previous_off
+            }
+            _ => false,
+        }
+    });
+    !today_is_on && !yesterday_continues
 }
 
 impl Default for DockConfig {
@@ -87,12 +143,24 @@ impl Default for DockConfig {
                 DeckButton::new("Reloj", "clock", "view", "clock"),
                 DeckButton::new("Spotify Web", "globe", "url", "https://open.spotify.com"),
             ],
+            screen_schedule: default_screen_schedule(),
         }
     }
 }
 
 impl DockConfig {
     pub fn validate(&self) -> Result<(), String> {
+        if self.screen_schedule.len() != 7
+            || self
+                .screen_schedule
+                .iter()
+                .any(|day| match (minutes(&day.on), minutes(&day.off)) {
+                    (Some(on), Some(off)) => on == off,
+                    _ => true,
+                })
+        {
+            return Err("Horario de pantalla no válido".into());
+        }
         if !["digital", "analog"].contains(&self.clock_style.as_str())
             || !["bold", "minimal"].contains(&self.digital_style.as_str())
             || !["12", "24"].contains(&self.hour_format.as_str())
@@ -201,6 +269,8 @@ pub struct SavedState {
     pub language: String,
     #[serde(default = "new_pairing_token")]
     pub pairing_token: String,
+    #[serde(default)]
+    pub notifications: crate::notifications::NotificationSettings,
 }
 
 fn default_language() -> String {
@@ -218,6 +288,7 @@ impl Default for SavedState {
             config: DockConfig::default(),
             language: default_language(),
             pairing_token: new_pairing_token(),
+            notifications: crate::notifications::NotificationSettings::default(),
         }
     }
 }
@@ -522,5 +593,31 @@ mod tests {
         let mut config = DockConfig::default();
         config.buttons[1].id = config.buttons[0].id.clone();
         assert!(config.validate().is_err());
+    }
+
+    #[test]
+    fn schedule_uses_each_day_and_handles_night() {
+        let mut schedule = default_screen_schedule();
+        schedule[0].enabled = true;
+        assert!(screen_off(&schedule, 0, 6 * 60));
+        assert!(!screen_off(&schedule, 0, 7 * 60));
+        assert!(screen_off(&schedule, 0, 23 * 60));
+        assert!(!screen_off(&schedule, 1, 6 * 60));
+        schedule[0].on = "20:00".into();
+        schedule[0].off = "02:00".into();
+        schedule[1].enabled = true;
+        assert!(screen_off(&schedule, 0, 19 * 60));
+        assert!(!screen_off(&schedule, 0, 20 * 60));
+        assert!(!screen_off(&schedule, 1, 60));
+        assert!(screen_off(&schedule, 1, 2 * 60));
+    }
+
+    #[test]
+    fn old_config_receives_disabled_schedule() {
+        let mut config = serde_json::to_value(DockConfig::default()).unwrap();
+        config.as_object_mut().unwrap().remove("screenSchedule");
+        let restored: DockConfig = serde_json::from_value(config).unwrap();
+        assert_eq!(restored.screen_schedule.len(), 7);
+        assert!(restored.screen_schedule.iter().all(|day| !day.enabled));
     }
 }
