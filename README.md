@@ -74,7 +74,9 @@ Para añadir un texto visible, crea la misma clave en ambos archivos y úsala me
 
 ## Si Spotify no aparece en el escritorio
 
-En **Reproducción**, SpotDock muestra el error de Windows cuando no encuentra una sesión de Spotify. Puedes abrir **Ajustes → Spotify en este ordenador** para activar la conexión alternativa:
+Windows puede publicar la sesión de Spotify con un identificador opaco, por ejemplo `chromium.vkvj5sk7rdptev6t2xc23h4tqa`. SpotDock reconoce automáticamente ese caso cuando `Spotify.exe` está abierto y es la única sesión multimedia con una canción. Recuerda la sesión elegida en `media-source.json`, dentro del directorio de configuración de la aplicación. Si hay varias sesiones o Spotify cambia de identificador tras una actualización o reinstalación, reproduce una canción y elige la sesión correcta en **Ajustes → Spotify en este ordenador → Sesión multimedia de Spotify**. La opción **Detectar automáticamente** borra la elección anterior y vuelve a buscar. El identificador puede depender de la instalación o del perfil, así que se guarda como preferencia local, no como una identidad permanente de Spotify.
+
+En **Reproducción**, SpotDock muestra el error de Windows cuando no encuentra la sesión elegida. Puedes abrir **Ajustes → Spotify en este ordenador** para activar la conexión alternativa:
 
 1. Crea una aplicación en [Spotify for Developers](https://developer.spotify.com/dashboard) y registra `http://127.0.0.1/callback` como URI de redirección. Spotify permite que el puerto de una dirección loopback sea dinámico.
 2. Copia su **Client ID** en SpotDock y pulsa **Conectar Spotify**. Termina la autorización en el navegador que se abre.

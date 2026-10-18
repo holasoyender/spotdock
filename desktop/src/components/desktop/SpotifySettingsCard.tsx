@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react"
+import { invoke } from "@tauri-apps/api/core"
 import { Music2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import type { Snapshot, SpotifyAuthStatus } from "../../../../shared/protocol"
+import type { MediaSources, Snapshot, SpotifyAuthStatus } from "../../../../shared/protocol"
 import { t } from "../../../../shared/i18n"
 import { localizeNativeMessage } from "../../../../shared/nativeMessages"
 
@@ -24,6 +26,37 @@ export function SpotifySettingsCard({
   disconnect: () => void
   dashboard: () => void
 }) {
+  const [sources, setSources] = useState<MediaSources>({ selected: null, sessions: [] })
+  const [sourceError, setSourceError] = useState("")
+
+  useEffect(() => {
+    const refresh = () =>
+      invoke<MediaSources>("get_media_sessions")
+        .then((current) => {
+          setSources(current)
+          setSourceError("")
+        })
+        .catch((cause) => setSourceError(localizeNativeMessage(cause)))
+    refresh()
+    const timer = setInterval(refresh, 4000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const chooseSource = async (source: string) => {
+    try {
+      await invoke("set_media_session", { source: source || null })
+      setSources(await invoke<MediaSources>("get_media_sessions"))
+      setSourceError("")
+    } catch (cause) {
+      setSourceError(localizeNativeMessage(cause))
+    }
+  }
+
+  const uniqueSessions = sources.sessions.filter(
+    (session, index, sessions) =>
+      sessions.findIndex((other) => other.source === session.source) === index,
+  )
+
   return (
     <Card className="min-w-0 border-white/8 bg-[#141817] xl:col-span-2">
       <CardHeader>
@@ -49,6 +82,36 @@ export function SpotifySettingsCard({
             {media.message && (
               <p className="mt-2 break-words text-xs leading-relaxed text-white/50">
                 {localizeNativeMessage(media.message)}
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="spotify-media-session">{t("desktop.spotify.sessionLabel")}</Label>
+            <select
+              id="spotify-media-session"
+              value={sources.selected ?? ""}
+              onChange={(event) => void chooseSource(event.target.value)}
+              className="flex h-9 w-full min-w-0 rounded-md border border-white/15 bg-[#1a1e1b] px-3 text-sm text-white"
+            >
+              <option value="">{t("desktop.spotify.detectAutomatically")}</option>
+              {sources.selected &&
+                !uniqueSessions.some((session) => session.source === sources.selected) && (
+                  <option value={sources.selected}>{sources.selected}</option>
+                )}
+              {uniqueSessions.map((session) => (
+                <option key={session.source} value={session.source}>
+                  {session.title
+                    ? `${session.title}${session.artist ? ` — ${session.artist}` : ""} (${session.source})`
+                    : session.source}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs leading-relaxed text-white/45">
+              {t("desktop.spotify.sessionHelp")}
+            </p>
+            {sourceError && (
+              <p role="alert" className="text-xs text-rose-300">
+                {sourceError}
               </p>
             )}
           </div>

@@ -4,6 +4,7 @@ mod discovery;
 mod dock;
 mod locale;
 mod media;
+mod media_source;
 mod spotify_web;
 
 use axum::{
@@ -172,6 +173,26 @@ fn set_autostart(app: AppHandle, enabled: bool) -> Result<bool, String> {
 #[tauri::command]
 async fn get_spotify_status() -> Result<spotify_web::AuthStatus, String> {
     spotify_web::status().await
+}
+
+#[tauri::command]
+fn get_media_sessions() -> Result<media_source::MediaSources, String> {
+    media::list_sessions()
+}
+
+#[tauri::command]
+fn set_media_session(source: Option<String>) -> Result<(), String> {
+    if let Some(id) = &source {
+        let sessions = media::list_sessions()?;
+        if !sessions
+            .sessions
+            .iter()
+            .any(|session| session.source == *id)
+        {
+            return Err("La sesión multimedia seleccionada ya no está disponible".into());
+        }
+    }
+    media_source::set_selected(source)
 }
 
 #[tauri::command]
@@ -460,6 +481,7 @@ pub fn run() {
         .setup(move |app| {
             let path = dock::config_path(&app.path().app_config_dir().map_err(|err| err.to_string())?);
             spotify_web::init(path.with_file_name("spotify.json"));
+            media_source::init(path.with_file_name("media-source.json"));
             let saved = dock::load(&path);
             dock::save(&path, &saved)?;
             let _ = shared.config_path.set(path);
@@ -522,6 +544,8 @@ pub fn run() {
             get_autostart,
             set_autostart,
             get_spotify_status,
+            get_media_sessions,
+            set_media_session,
             connect_spotify,
             disconnect_spotify,
             open_spotify_developer_dashboard,

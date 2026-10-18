@@ -1,4 +1,4 @@
-use crate::{Control, Track, spotify_web};
+use crate::{Control, Track, media_source, spotify_web};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static PREFER_WEB: AtomicBool = AtomicBool::new(false);
@@ -7,7 +7,10 @@ static PREFER_WEB: AtomicBool = AtomicBool::new(false);
 mod windows_media {
     use super::*;
     use base64::{Engine, engine::general_purpose::STANDARD};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::{
+        sync::{Mutex, OnceLock},
+        time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    };
     use windows::{
         Media::{
             Control::{
@@ -18,59 +21,167 @@ mod windows_media {
             MediaPlaybackAutoRepeatMode,
         },
         Storage::Streams::DataReader,
+        Win32::{
+            Foundation::CloseHandle,
+            System::Diagnostics::ToolHelp::{
+                CreateToolhelp32Snapshot, PROCESSENTRY32W, Process32FirstW, Process32NextW,
+                TH32CS_SNAPPROCESS,
+            },
+        },
     };
 
-    async fn spotify() -> Result<GlobalSystemMediaTransportControlsSession, String> {
+    fn spotify_desktop_running() -> bool {
+        static CACHE: OnceLock<Mutex<Option<(Instant, bool)>>> = OnceLock::new();
+        let cache = CACHE.get_or_init(|| Mutex::new(None));
+        let Ok(mut cache) = cache.lock() else {
+            return false;
+        };
+        if let Some((checked_at, running)) = *cache {
+            if checked_at.elapsed() < Duration::from_secs(5) {
+                return running;
+            }
+        }
+        let running = find_spotify_process();
+        *cache = Some((Instant::now(), running));
+        running
+    }
+
+    fn find_spotify_process() -> bool {
+        let Ok(snapshot) = (unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) }) else {
+            return false;
+        };
+        let mut process = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        let mut running = false;
+        if unsafe { Process32FirstW(snapshot, &mut process) }.is_ok() {
+            loop {
+                let length = process
+                    .szExeFile
+                    .iter()
+                    .position(|unit| *unit == 0)
+                    .unwrap_or(process.szExeFile.len());
+                if String::from_utf16_lossy(&process.szExeFile[..length])
+                    .eq_ignore_ascii_case("Spotify.exe")
+                {
+                    running = true;
+                    break;
+                }
+                if unsafe { Process32NextW(snapshot, &mut process) }.is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = unsafe { CloseHandle(snapshot) };
+        running
+    }
+
+    struct SessionEntry {
+        session: GlobalSystemMediaTransportControlsSession,
+        details: media_source::MediaSession,
+    }
+
+    fn available_sessions(preferred: Option<&str>) -> Result<Vec<SessionEntry>, String> {
         let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
             .map_err(|e| e.to_string())?
             .join()
             .map_err(|e| e.to_string())?;
         let sessions = manager.GetSessions().map_err(|e| e.to_string())?;
-        let mut first = None;
-        let mut with_metadata = None;
-        let mut sources = Vec::new();
+        let mut entries = Vec::new();
         for index in 0..sessions.Size().map_err(|e| e.to_string())? {
             let session = sessions.GetAt(index).map_err(|e| e.to_string())?;
             let source = session
                 .SourceAppUserModelId()
                 .map_err(|e| e.to_string())?
-                .to_string()
-                .to_ascii_lowercase();
-            sources.push(source.clone());
-            if source.contains("spotify") {
-                if first.is_none() {
-                    first = Some(session.clone());
-                }
-                let playing = session
-                    .GetPlaybackInfo()
-                    .ok()
-                    .and_then(|info| info.PlaybackStatus().ok())
-                    == Some(GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing);
-                let has_title = session
+                .to_string();
+            let inspect = preferred.is_none_or(|id| source.eq_ignore_ascii_case(id))
+                || source.to_ascii_lowercase().contains("spotify");
+            let media = if inspect {
+                session
                     .TryGetMediaPropertiesAsync()
                     .ok()
                     .and_then(|operation| operation.join().ok())
+            } else {
+                None
+            };
+            let details = media_source::MediaSession {
+                source,
+                title: media
+                    .as_ref()
                     .and_then(|media| media.Title().ok())
-                    .is_some_and(|title| !title.is_empty());
-                if has_title {
-                    if playing {
-                        return Ok(session);
-                    }
-                    if with_metadata.is_none() {
-                        with_metadata = Some(session);
-                    }
-                }
+                    .map(|value| value.to_string())
+                    .unwrap_or_default(),
+                artist: media
+                    .as_ref()
+                    .and_then(|media| media.Artist().ok())
+                    .map(|value| value.to_string())
+                    .unwrap_or_default(),
+                playing: inspect
+                    && session
+                        .GetPlaybackInfo()
+                        .ok()
+                        .and_then(|info| info.PlaybackStatus().ok())
+                        == Some(GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing),
+            };
+            entries.push(SessionEntry { session, details });
+        }
+        Ok(entries)
+    }
+
+    pub fn list_sessions() -> Result<Vec<media_source::MediaSession>, String> {
+        Ok(available_sessions(None)?
+            .into_iter()
+            .map(|entry| entry.details)
+            .collect())
+    }
+
+    fn selection_error(entries: &[SessionEntry], selected: Option<&str>) -> String {
+        if entries.is_empty() {
+            return "Windows no muestra ninguna sesión multimedia; comprueba que Spotify esté reproduciendo".into();
+        }
+        if let Some(id) = selected {
+            return if entries
+                .iter()
+                .any(|entry| entry.details.source.eq_ignore_ascii_case(id))
+            {
+                "La sesión multimedia de Spotify no contiene una canción".into()
+            } else {
+                "La sesión multimedia guardada no está disponible; elige la de Spotify en Ajustes"
+                    .into()
+            };
+        }
+        let titled = entries
+            .iter()
+            .filter(|entry| !entry.details.title.trim().is_empty())
+            .count();
+        match titled {
+            0 => "Las sesiones multimedia de Windows no contienen ninguna canción".into(),
+            1 => "No se pudo identificar la sesión de Spotify; elígela en Ajustes".into(),
+            _ => "Hay varias sesiones multimedia; elige la de Spotify en Ajustes".into(),
+        }
+    }
+
+    async fn spotify() -> Result<GlobalSystemMediaTransportControlsSession, String> {
+        let selected = media_source::selected();
+        let entries = available_sessions(selected.as_deref())?;
+        let details: Vec<_> = entries.iter().map(|entry| entry.details.clone()).collect();
+        let spotify_running =
+            selected.is_none() && !entries.is_empty() && spotify_desktop_running();
+        let index = media_source::choose(&details, selected.as_deref(), spotify_running)
+            .ok_or_else(|| selection_error(&entries, selected.as_deref()))?;
+        let entry = &entries[index];
+        if !selected
+            .as_deref()
+            .is_some_and(|id| id.eq_ignore_ascii_case(&entry.details.source))
+        {
+            if let Err(error) =
+                media_source::remember(entry.details.source.clone(), selected.as_deref())
+            {
+                log::warn!("No se pudo guardar la sesión multimedia: {error}");
             }
         }
-        with_metadata
-            .or(first)
-            .ok_or_else(|| {
-                if sources.is_empty() {
-                    "Windows no muestra ninguna sesión multimedia; comprueba que Spotify esté reproduciendo".into()
-                } else {
-                    format!("Spotify no aparece entre las sesiones multimedia de Windows ({})", sources.join(", "))
-                }
-            })
+        Ok(entry.session.clone())
     }
 
     pub async fn read_track() -> Result<Track, String> {
@@ -194,6 +305,17 @@ mod windows_media {
             Err("Spotify no admite esta acción mediante Windows".into())
         }
     }
+}
+
+pub fn list_sessions() -> Result<media_source::MediaSources, String> {
+    #[cfg(target_os = "windows")]
+    let sessions = windows_media::list_sessions()?;
+    #[cfg(not(target_os = "windows"))]
+    let sessions = Vec::new();
+    Ok(media_source::MediaSources {
+        selected: media_source::selected(),
+        sessions,
+    })
 }
 
 pub async fn read_track() -> Result<(Track, &'static str, Option<String>), String> {

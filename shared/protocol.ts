@@ -54,3 +54,15 @@ export type SpotifyAuthStatus = {
   clientId: string
   error: string | null
 }
+
+export type MediaSession = {
+  source: string
+  title: string
+  artist: string
+  playing: boolean
+}
+
+export type MediaSources = {
+  selected: string | null
+  sessions: MediaSession[]
+}
