@@ -15,6 +15,10 @@
     "format": "prettier --write \"desktop/src/**/*.{ts,tsx}\" \"mobile/src/**/*.{ts,tsx}\" \"shared/**/*.ts\" \"shared/locales/*.json\" \"tests/**/*.ts\" \"desktop/vite.config.ts\" \"mobile/vite.config.ts\"",
     "format:check": "prettier --check \"desktop/src/**/*.{ts,tsx}\" \"mobile/src/**/*.{ts,tsx}\" \"shared/**/*.ts\" \"shared/locales/*.json\" \"tests/**/*.ts\" \"desktop/vite.config.ts\" \"mobile/vite.config.ts\""
   },
+  "dependencies": {
+    "i18next": "^26.4.4",
+    "react-i18next": "^17.0.16"
+  },
   "devDependencies": {
     "@types/node": "^26.6.4",
     "prettier": "3.6.2"
