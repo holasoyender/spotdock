@@ -1,4 +1,14 @@
-import { Clock3, Disc3, Grid3X3, Music2, QrCode, Settings2, Wifi, WifiOff } from "lucide-react"
+import {
+  Clock3,
+  CloudSun,
+  Disc3,
+  Grid3X3,
+  Music2,
+  QrCode,
+  Settings2,
+  Wifi,
+  WifiOff,
+} from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { View } from "@/connection/useDockConnection.ts"
@@ -47,7 +57,7 @@ export function DockNavigation({
           className={view === "clock" ? "dock-view-active" : "text-white/45"}
         >
           <Clock3 className="size-4" />
-          <span className="hidden text-xs sm:inline">{t("common.clock")}</span>
+          <span className="hidden text-xs md:inline">{t("common.clock")}</span>
         </Button>
         <Button
           variant="ghost"
@@ -58,7 +68,18 @@ export function DockNavigation({
           className={view === "player" ? "dock-view-active" : "text-white/45"}
         >
           <Music2 className="size-4" />
-          <span className="hidden text-xs sm:inline">{t("common.music")}</span>
+          <span className="hidden text-xs md:inline">{t("common.music")}</span>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label={t("common.weather")}
+          aria-current={view === "weather" ? "page" : undefined}
+          onClick={() => openView("weather")}
+          className={view === "weather" ? "dock-view-active" : "text-white/45"}
+        >
+          <CloudSun className="size-4" />
+          <span className="hidden text-xs md:inline">{t("common.weather")}</span>
         </Button>
         <Button
           variant="ghost"
@@ -69,7 +90,7 @@ export function DockNavigation({
           className={view === "deck" ? "dock-view-active" : "text-white/45"}
         >
           <Grid3X3 className="size-4" />
-          <span className="hidden text-xs sm:inline">{t("common.deck")}</span>
+          <span className="hidden text-xs md:inline">{t("common.deck")}</span>
         </Button>
       </nav>
       <div className="flex items-center gap-2">

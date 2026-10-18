@@ -9,17 +9,11 @@ import { Switch } from "@/components/ui/switch"
 import { Segmented } from "./components/desktop/Segmented"
 import { i18n, t } from "../../shared/i18n"
 import { localizeNativeMessage } from "../../shared/nativeMessages"
-import {
-  type DockConfig,
-  type Location,
-  type Weather,
-  weatherTemperature,
-  weatherText,
-} from "../../shared/dock"
+import { type DockConfig, type Location } from "../../shared/dock"
 
 type ChangeConfig = (config: DockConfig) => Promise<void>
 
-function ClockPreview({ config, weather }: { config: DockConfig; weather: Weather | null }) {
+function ClockPreview({ config }: { config: DockConfig }) {
   const [now, setNow] = useState(new Date())
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000)
@@ -72,9 +66,7 @@ function ClockPreview({ config, weather }: { config: DockConfig; weather: Weathe
       {config.showWeather && (
         <p className="relative mt-3 flex items-center gap-2 text-sm dock-accent-text">
           <CloudSun className="size-4" />
-          {weather
-            ? `${weatherTemperature(weather.temperatureC, config.weatherUnit)} · ${weatherText(weather.code, weather.isDay)}`
-            : t("common.loadingWeather")}
+          {config.weatherLocation?.name ?? t("desktop.clock.noLocation")}
         </p>
       )}
     </div>
@@ -83,11 +75,9 @@ function ClockPreview({ config, weather }: { config: DockConfig; weather: Weathe
 
 export function ClockSettings({
   config,
-  weather,
   onChange,
 }: {
   config: DockConfig
-  weather: Weather | null
   onChange: ChangeConfig
 }) {
   const [query, setQuery] = useState("")
@@ -282,7 +272,7 @@ export function ClockSettings({
         </Card>
       </div>
       <div className="min-w-0 space-y-4">
-        <ClockPreview config={config} weather={weather} />
+        <ClockPreview config={config} />
         <p className="px-2 text-xs leading-relaxed text-white/40">
           {t("desktop.clock.previewHelp")}
         </p>

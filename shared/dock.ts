@@ -15,6 +15,30 @@ export type Weather = {
   isDay: boolean
   updatedAt: string
 }
+export type HourlyForecast = {
+  time: string
+  temperatureC: number
+  code: number
+  isDay: boolean
+  precipitationProbability: number | null
+  apparentC: number | null
+  windKmh: number | null
+}
+export type DailyForecast = {
+  date: string
+  minC: number
+  maxC: number
+  code: number
+  precipitationProbability: number | null
+  sunrise: string | null
+  sunset: string | null
+  windKmh: number | null
+}
+export type WeatherForecast = {
+  timezone: string
+  hourly: HourlyForecast[]
+  daily: DailyForecast[]
+}
 export type DeckButton = {
   id: string
   label: string

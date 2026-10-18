@@ -250,16 +250,6 @@ fn validate_url(value: &str) -> Result<(), String> {
     Ok(())
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Weather {
-    pub temperature_c: f64,
-    pub apparent_c: f64,
-    pub code: i32,
-    pub is_day: bool,
-    pub updated_at: String,
-}
-
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SavedState {
@@ -358,52 +348,6 @@ pub async fn search_locations(query: &str, language: &str) -> Result<Vec<Locatio
         .await
         .map_err(|e| e.to_string())?;
     Ok(result.results.unwrap_or_default())
-}
-
-#[derive(Deserialize)]
-struct WeatherResponse {
-    current: WeatherCurrent,
-}
-#[derive(Deserialize)]
-struct WeatherCurrent {
-    temperature_2m: f64,
-    apparent_temperature: f64,
-    weather_code: i32,
-    is_day: i32,
-    time: String,
-}
-
-pub async fn fetch_weather(location: &Location) -> Result<Weather, String> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let result = client
-        .get("https://api.open-meteo.com/v1/forecast")
-        .query(&[
-            ("latitude", location.latitude.to_string()),
-            ("longitude", location.longitude.to_string()),
-            (
-                "current",
-                "temperature_2m,apparent_temperature,weather_code,is_day".into(),
-            ),
-            ("timezone", "auto".into()),
-        ])
-        .send()
-        .await
-        .map_err(|e| e.to_string())?
-        .error_for_status()
-        .map_err(|e| e.to_string())?
-        .json::<WeatherResponse>()
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(Weather {
-        temperature_c: result.current.temperature_2m,
-        apparent_c: result.current.apparent_temperature,
-        code: result.current.weather_code,
-        is_day: result.current.is_day == 1,
-        updated_at: result.current.time,
-    })
 }
 
 fn parse_shortcut(value: &str) -> Result<Vec<u16>, String> {

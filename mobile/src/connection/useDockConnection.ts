@@ -7,7 +7,7 @@ import {
   type SetStateAction,
 } from "react"
 import { invoke } from "@tauri-apps/api/core"
-import { defaultDockConfig, isHexColor, type DockConfig, type Weather } from "../../../shared/dock"
+import { defaultDockConfig, isHexColor, type DockConfig } from "../../../shared/dock"
 import type {
   ActionResult,
   ControlAction,
@@ -23,7 +23,7 @@ import { readStored } from "../lib/storage"
 import { resolveLocale, t, type Locale } from "../../../shared/i18n"
 import { localizeNativeMessage } from "../../../shared/nativeMessages"
 
-export type View = "clock" | "player" | "deck"
+export type View = "clock" | "player" | "weather" | "deck"
 type ConnectionStatus = "offline" | "connecting" | "connected"
 
 type ConnectionOptions = {
@@ -66,7 +66,6 @@ export function useDockConnection({
   const [config, setConfig] = useState<DockConfig>(() =>
     readStored("spotdock:config", defaultDockConfig),
   )
-  const [weather, setWeather] = useState<Weather | null>(null)
   const [desktopLocale, setDesktopLocale] = useState<Locale>(() =>
     resolveLocale(readStored("spotdock:desktop-locale", "en-US")),
   )
@@ -165,7 +164,6 @@ export function useDockConnection({
           configRef.current = nextConfig
           setConfig(nextConfig)
           localStorage.setItem("spotdock:config", JSON.stringify(nextConfig))
-          setWeather(message.weather ?? null)
           const locale = resolveLocale(message.locale)
           setDesktopLocale(locale)
           localStorage.setItem("spotdock:desktop-locale", JSON.stringify(locale))
@@ -224,7 +222,6 @@ export function useDockConnection({
   function resetConnection() {
     socket.current?.close()
     setTrack(emptyTrack)
-    setWeather(null)
   }
 
   return {
@@ -234,7 +231,6 @@ export function useDockConnection({
     setPosition,
     accent,
     config,
-    weather,
     desktopLocale,
     actionMessage,
     notifications,

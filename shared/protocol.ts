@@ -1,4 +1,4 @@
-import type { DockConfig, Weather } from "./dock"
+import type { DockConfig } from "./dock"
 import type { LanguagePreference, Locale } from "./i18n"
 
 /** Shape of the media state sent by the desktop application. */
@@ -33,7 +33,6 @@ export type Snapshot = {
   screenAt: number
   language: LanguagePreference
   locale: Locale
-  weather: Weather | null
   media: { source: string; message: string | null }
 }
 

@@ -5,13 +5,31 @@ import { DockNavigation } from "./components/dock/DockNavigation"
 import { MobileSettings } from "./components/dock/MobileSettings"
 import { NotificationBanner } from "./components/dock/NotificationBanner"
 import { ClockView } from "./views/ClockView"
+import { WeatherView } from "./views/WeatherView"
 import { PlayerView } from "./views/PlayerView"
 import { DeckView } from "./views/DeckView"
 import { validAddress } from "./connection/address"
 import { useDockConnection, type View } from "./connection/useDockConnection"
 import { readStored } from "./lib/storage"
+import { useWeather } from "./weather/useWeather"
+import {
+  clockSettingsFrom,
+  mobileScheduledOff,
+  readLocalSetting,
+  resolveMobileConfig,
+  validAccent,
+  validClockSettings,
+  validScreenSchedule,
+  type ClockSettings,
+} from "./localSettings"
 import type { Preferences } from "./preferences"
-import { foregroundForColor, isHexColor, isScreenOff, type DeckButton } from "../../shared/dock"
+import {
+  foregroundForColor,
+  isHexColor,
+  type DeckButton,
+  type Location,
+  type ScreenSchedule,
+} from "../../shared/dock"
 import type { ControlAction as Action } from "../../shared/protocol"
 import {
   isLanguagePreference,
@@ -32,6 +50,20 @@ export default function App() {
     readStored("spotdock:preferences", { awake: true, brightness: 100, compact: false }),
   )
   const [settings, setSettings] = useState(false)
+  const [weatherDialogOpen, setWeatherDialogOpen] = useState(false)
+  const [localWeatherLocation, setLocalWeatherLocation] = useState<Location | null>(() =>
+    readStored("spotdock:weather-location", null),
+  )
+  const [localClock, setLocalClock] = useState<ClockSettings | null>(() =>
+    readLocalSetting("spotdock:local-clock", validClockSettings),
+  )
+  const [localSchedule, setLocalSchedule] = useState<ScreenSchedule | null>(() =>
+    readLocalSetting("spotdock:local-schedule", validScreenSchedule),
+  )
+  const [localAccent, setLocalAccent] = useState<string | null>(() =>
+    readLocalSetting("spotdock:local-accent", validAccent),
+  )
+  const [wakeUntil, setWakeUntil] = useState(0)
   const [language, setLanguage] = useState<LanguagePreference>(() => {
     const saved = readStored<unknown>("spotdock:language", "auto")
     return isLanguagePreference(saved) ? saved : "auto"
@@ -48,7 +80,6 @@ export default function App() {
     setPosition,
     accent,
     config,
-    weather,
     desktopLocale,
     actionMessage,
     notifications,
@@ -58,10 +89,28 @@ export default function App() {
     sendAction,
     resetConnection,
   } = useDockConnection({ url, setUrl, setManual, setView, seeking, lastActivity, setError })
+  const effectiveConfig = resolveMobileConfig(config, Boolean(url), localClock, localSchedule)
+  const desktopWeatherLocation = url ? config.weatherLocation : null
+  const weatherLocation = localWeatherLocation ?? desktopWeatherLocation
+  const {
+    weather,
+    forecast,
+    loading: weatherLoading,
+    error: weatherError,
+  } = useWeather(weatherLocation)
   const connected = status === "connected"
-  const screenOff = connected ? desktopScreenOff : isScreenOff(config.screenSchedule, clock)
-  const locale = language === "auto" ? desktopLocale : resolveLocale(language)
-  const color = isHexColor(accent) ? accent : "#b8ef64"
+  const scheduledOff = mobileScheduledOff(
+    effectiveConfig.screenSchedule,
+    localSchedule,
+    connected,
+    desktopScreenOff,
+    clock,
+  )
+  const screenOff = scheduledOff && !settings && clock.getTime() >= wakeUntil
+  const autoLocale = url ? desktopLocale : resolveLocale(navigator.language)
+  const locale = language === "auto" ? autoLocale : resolveLocale(language)
+  const selectedAccent = localAccent ?? (url ? accent : "#b8ef64")
+  const color = isHexColor(selectedAccent) ? selectedAccent : "#b8ef64"
   const theme = {
     "--dock-accent": color,
     "--dock-accent-ink": foregroundForColor(color),
@@ -71,6 +120,18 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("spotdock:preferences", JSON.stringify(preferences))
   }, [preferences])
+  useEffect(() => {
+    localStorage.setItem("spotdock:weather-location", JSON.stringify(localWeatherLocation))
+  }, [localWeatherLocation])
+  useEffect(() => {
+    localStorage.setItem("spotdock:local-clock", JSON.stringify(localClock))
+  }, [localClock])
+  useEffect(() => {
+    localStorage.setItem("spotdock:local-schedule", JSON.stringify(localSchedule))
+  }, [localSchedule])
+  useEffect(() => {
+    localStorage.setItem("spotdock:local-accent", JSON.stringify(localAccent))
+  }, [localAccent])
   useEffect(() => {
     setAppLocale(locale)
     setError("")
@@ -118,14 +179,15 @@ export default function App() {
   useEffect(() => {
     const timer = setInterval(() => {
       if (
-        view === "player" &&
-        !track.playing &&
-        Date.now() - lastActivity.current > config.returnAfterSeconds * 1000
+        !settings &&
+        !weatherDialogOpen &&
+        (view === "weather" || (view === "player" && !track.playing)) &&
+        Date.now() - lastActivity.current > effectiveConfig.returnAfterSeconds * 1000
       )
-        setView("clock")
+        setView(view === "weather" && track.playing ? "player" : "clock")
     }, 1000)
     return () => clearInterval(timer)
-  }, [view, track.playing, config.returnAfterSeconds])
+  }, [view, track.playing, effectiveConfig.returnAfterSeconds, settings, weatherDialogOpen])
   useEffect(
     () => () => {
       if (navigationTimer.current) clearTimeout(navigationTimer.current)
@@ -192,6 +254,8 @@ export default function App() {
   }
   const setPreference = <K extends keyof Preferences>(key: K, value: Preferences[K]) =>
     setPreferences((current) => ({ ...current, [key]: value }))
+  const patchClock = (change: Partial<ClockSettings>) =>
+    setLocalClock((current) => ({ ...(current ?? clockSettingsFrom(effectiveConfig)), ...change }))
 
   return (
     <div className="dark relative h-screen overflow-hidden bg-[#090b0b] text-white" style={theme}>
@@ -205,15 +269,18 @@ export default function App() {
           <div className="absolute inset-0 bg-[#090b0b]/20" />
         </div>
       )}
-      <div className="relative flex h-full min-h-0 flex-col px-5 py-4 sm:px-9 sm:py-5">
-        {!navigationVisible && !settings && (
-          <button
-            type="button"
-            aria-label={t("mobile.nav.show")}
-            onPointerDown={revealNavigation}
-            className="absolute inset-x-0 top-0 z-10 h-20 bg-transparent sm:h-24"
-          />
-        )}
+      <div
+        className="relative flex h-full min-h-0 flex-col px-5 py-4 sm:px-9 sm:py-5"
+        onPointerDownCapture={(event) => {
+          if (
+            !navigationVisible &&
+            !settings &&
+            event.clientY <= 80 &&
+            !(event.target instanceof Element && event.target.closest("button"))
+          )
+            revealNavigation()
+        }}
+      >
         <DockNavigation
           navigationVisible={navigationVisible}
           view={view}
@@ -226,11 +293,15 @@ export default function App() {
         {view === "clock" && (
           <ClockView
             now={clock}
-            config={config}
+            config={effectiveConfig}
             weather={weather}
+            weatherLocation={weatherLocation}
+            weatherError={weatherError}
+            showWeather={effectiveConfig.showWeather}
             connected={connected}
-            paired={Boolean(url)}
+            showPairingPrompt={!url && !localWeatherLocation}
             onOpenPlayer={() => openView("player")}
+            onOpenWeather={() => openView("weather")}
             onPair={scanCode}
           />
         )}
@@ -247,9 +318,23 @@ export default function App() {
             }}
           />
         )}
+        {view === "weather" && (
+          <WeatherView
+            now={clock}
+            config={effectiveConfig}
+            location={weatherLocation}
+            forecast={forecast}
+            loading={weatherLoading}
+            onLocationSettings={() => setSettings(true)}
+            onDialogChange={setWeatherDialogOpen}
+            onActivity={() => {
+              lastActivity.current = Date.now()
+            }}
+          />
+        )}
         {view === "deck" && (
           <DeckView
-            buttons={config.buttons}
+            buttons={effectiveConfig.buttons}
             connected={connected}
             onPress={pressButton}
             message={actionMessage}
@@ -258,7 +343,10 @@ export default function App() {
       </div>
       <MobileSettings
         settings={settings}
-        setSettings={setSettings}
+        setSettings={(open) => {
+          lastActivity.current = Date.now()
+          setSettings(open)
+        }}
         manual={manual}
         setManual={setManual}
         saveAddress={saveAddress}
@@ -268,13 +356,33 @@ export default function App() {
         setPreference={setPreference}
         forget={forget}
         language={language}
-        desktopLocale={desktopLocale}
+        desktopLocale={autoLocale}
         onLanguageChange={setLanguage}
+        localWeatherLocation={localWeatherLocation}
+        desktopWeatherLocation={desktopWeatherLocation}
+        onWeatherLocationChange={setLocalWeatherLocation}
+        paired={Boolean(url)}
+        clockConfig={effectiveConfig}
+        localClock={localClock}
+        onClockChange={patchClock}
+        onClockReset={() => setLocalClock(null)}
+        localSchedule={localSchedule}
+        onScheduleChange={setLocalSchedule}
+        accent={color}
+        localAccent={localAccent}
+        onAccentChange={setLocalAccent}
       />
       {notifications[0] && (
         <NotificationBanner key={notifications[0].id} notification={notifications[0]} />
       )}
-      {screenOff && <div className="fixed inset-0 z-[100] bg-black" aria-hidden="true" />}
+      {screenOff && (
+        <button
+          type="button"
+          className="fixed inset-0 z-[100] bg-black"
+          aria-label={t("mobile.settings.temporaryWake")}
+          onClick={() => setWakeUntil(Date.now() + 60_000)}
+        />
+      )}
     </div>
   )
 }

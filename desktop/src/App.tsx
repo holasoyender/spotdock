@@ -60,7 +60,6 @@ const initial: Snapshot = {
   screenAt: 0,
   language: "auto",
   locale: "en-US",
-  weather: null,
   media: { source: "none", message: null },
 }
 
@@ -155,8 +154,8 @@ export default function App() {
       unlistenTrack = callback
     })
     const clientsTimer = setInterval(() => {
-      invoke<Snapshot>("get_snapshot")
-        .then((snapshot) => setState((previous) => ({ ...previous, clients: snapshot.clients })))
+      invoke<number>("get_client_count")
+        .then((clients) => setState((previous) => ({ ...previous, clients })))
         .catch(() => {})
     }, 2000)
     const spotifyTimer = setInterval(refreshSpotify, 2000)
@@ -323,13 +322,7 @@ export default function App() {
               </>
             )}
 
-            {view === "clock" && (
-              <ClockSettings
-                config={state.config}
-                weather={state.weather}
-                onChange={changeConfig}
-              />
-            )}
+            {view === "clock" && <ClockSettings config={state.config} onChange={changeConfig} />}
 
             {view === "deck" && <DeckSettings config={state.config} onChange={changeConfig} />}
 

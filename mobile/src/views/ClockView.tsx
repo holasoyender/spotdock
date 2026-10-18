@@ -1,64 +1,38 @@
-import {
-  Cloud,
-  CloudDrizzle,
-  CloudFog,
-  CloudLightning,
-  CloudMoon,
-  CloudRain,
-  CloudSnow,
-  CloudSun,
-  Moon,
-  Sun,
-} from "lucide-react"
+import { ChevronRight, CloudSun } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { WeatherIcon } from "../components/dock/WeatherIcon"
 import { i18n, t } from "../../../shared/i18n"
 import {
   type DockConfig,
   type Weather,
+  type Location,
   weatherTemperature,
   weatherText,
 } from "../../../shared/dock"
-
-function WeatherIcon({ weather, className }: { weather: Weather; className?: string }) {
-  const code = weather.code
-  const Icon =
-    code === 0
-      ? weather.isDay
-        ? Sun
-        : Moon
-      : code <= 2
-        ? weather.isDay
-          ? CloudSun
-          : CloudMoon
-        : code === 3
-          ? Cloud
-          : code <= 48
-            ? CloudFog
-            : code <= 57
-              ? CloudDrizzle
-              : code <= 67 || (code <= 82 && code >= 80)
-                ? CloudRain
-                : code <= 86
-                  ? CloudSnow
-                  : CloudLightning
-  return <Icon className={className} strokeWidth={1.4} />
-}
 
 export function ClockView({
   now,
   config,
   weather,
+  weatherLocation,
+  weatherError,
+  showWeather,
   connected,
-  paired,
+  showPairingPrompt,
   onOpenPlayer,
+  onOpenWeather,
   onPair,
 }: {
   now: Date
   config: DockConfig
   weather: Weather | null
+  weatherLocation: Location | null
+  weatherError: boolean
+  showWeather: boolean
   connected: boolean
-  paired: boolean
+  showPairingPrompt: boolean
   onOpenPlayer: () => void
+  onOpenWeather: () => void
   onPair: () => void
 }) {
   const time = now.toLocaleTimeString(i18n.resolvedLanguage, {
@@ -123,7 +97,7 @@ export function ClockView({
         {config.showDate && (
           <p className="mt-5 text-base capitalize text-white/55 sm:text-xl">{date}</p>
         )}
-        {!connected && !paired && (
+        {!connected && showPairingPrompt && (
           <Button
             variant="outline"
             className="mt-5 gap-2 border-white/20"
@@ -136,31 +110,48 @@ export function ClockView({
           </Button>
         )}
       </div>
-      {config.showWeather && (
-        <aside className="relative flex w-[29%] min-w-44 max-w-72 shrink-0 flex-col items-center justify-center border-l border-white/8 py-5 pl-4 text-center sm:pl-8">
+      {showWeather && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            onOpenWeather()
+          }}
+          aria-label={t("mobile.weather.openForecast")}
+          className="relative flex w-[29%] min-w-44 max-w-72 shrink-0 flex-col items-center justify-center border-l border-white/8 py-5 pl-4 text-center transition-colors hover:bg-white/3 active:bg-white/6 sm:pl-8"
+        >
           {weather ? (
             <>
-              <WeatherIcon weather={weather} className="size-14 dock-accent-text sm:size-20" />
+              <WeatherIcon
+                code={weather.code}
+                isDay={weather.isDay}
+                className="size-14 dock-accent-text sm:size-20"
+              />
               <div className="mt-3 text-3xl font-semibold tabular-nums sm:text-5xl">
                 {weatherTemperature(weather.temperatureC, config.weatherUnit)}
               </div>
               <div className="mt-2 text-sm text-white/65 sm:text-base">
                 {weatherText(weather.code, weather.isDay)}
               </div>
-              <div className="mt-1 truncate text-xs text-white/40">
-                {config.weatherLocation?.name}
+              <div className="mt-1 truncate text-xs text-white/40">{weatherLocation?.name}</div>
+              <div className="mt-3 flex items-center gap-1 text-[11px] dock-accent-text">
+                {t("mobile.weather.viewForecast")} <ChevronRight className="size-3" />
               </div>
-              <div className="mt-4 text-[10px] text-white/25">Open-Meteo</div>
+              <div className="mt-1 text-[10px] text-white/25">Open-Meteo</div>
             </>
           ) : (
             <>
               <CloudSun className="size-14 text-white/20" />
               <p className="mt-3 text-sm text-white/40">
-                {connected ? t("common.loadingWeather") : t("mobile.clock.weatherWhenConnected")}
+                {weatherLocation
+                  ? weatherError
+                    ? t("mobile.weather.unavailable")
+                    : t("common.loadingWeather")
+                  : t("mobile.weather.chooseLocation")}
               </p>
             </>
           )}
-        </aside>
+        </button>
       )}
     </main>
   )

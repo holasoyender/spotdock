@@ -8,21 +8,8 @@ import { Switch } from "@/components/ui/switch"
 import { SpotifySettingsCard } from "./SpotifySettingsCard"
 import { LanguageSelect } from "./LanguageSelect"
 import type { Pairing, Snapshot, SpotifyAuthStatus } from "../../../../shared/protocol"
-import {
-  t,
-  type LanguagePreference,
-  type Locale,
-  type TranslationKey,
-} from "../../../../shared/i18n"
-
-const palette = [
-  { name: "desktop.color.lime", color: "#b8ef64" },
-  { name: "desktop.color.white", color: "#ffffff" },
-  { name: "desktop.color.blue", color: "#91c7ff" },
-  { name: "desktop.color.pink", color: "#ffb8d7" },
-  { name: "desktop.color.amber", color: "#ffd18a" },
-  { name: "desktop.color.purple", color: "#c3b3ff" },
-] satisfies { name: TranslationKey; color: string }[]
+import { accentPalette } from "../../../../shared/accent"
+import { t, type LanguagePreference, type Locale } from "../../../../shared/i18n"
 
 type Props = {
   accent: string
@@ -83,7 +70,7 @@ export function SettingsPage({
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-            {palette.map((option) => (
+            {accentPalette.map((option) => (
               <Button
                 key={option.color}
                 variant="outline"

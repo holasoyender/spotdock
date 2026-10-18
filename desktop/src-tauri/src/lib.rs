@@ -29,7 +29,7 @@ use std::{
 };
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_autostart::ManagerExt;
-use tokio::sync::{Notify, RwLock, broadcast};
+use tokio::sync::{RwLock, broadcast};
 
 #[derive(Clone, Default, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -58,7 +58,6 @@ struct Snapshot {
     screen_at: i64,
     language: String,
     locale: &'static str,
-    weather: Option<dock::Weather>,
     media: MediaStatus,
 }
 
@@ -77,12 +76,10 @@ struct Shared {
     config: RwLock<dock::DockConfig>,
     language: RwLock<String>,
     system_locale: String,
-    weather: RwLock<Option<dock::Weather>>,
     media_status: RwLock<MediaStatus>,
     notifications: RwLock<notifications::NotificationSettings>,
     notification_delivery: notification_delivery::NotificationDelivery,
     config_path: OnceLock<PathBuf>,
-    refresh_weather: Notify,
     updates: broadcast::Sender<String>,
     port: u16,
 }
@@ -170,6 +167,11 @@ async fn rotate_pairing(shared: tauri::State<'_, Arc<Shared>>) -> Result<Pairing
 #[tauri::command]
 async fn get_snapshot(shared: tauri::State<'_, Arc<Shared>>) -> Result<Snapshot, String> {
     Ok(snapshot(&shared).await)
+}
+
+#[tauri::command]
+async fn get_client_count(shared: tauri::State<'_, Arc<Shared>>) -> Result<usize, String> {
+    Ok(*shared.clients.read().await)
 }
 
 #[tauri::command]
@@ -309,14 +311,8 @@ async fn set_dock_config(
     app: AppHandle,
 ) -> Result<(), String> {
     config.validate()?;
-    let old_location = shared.config.read().await.weather_location.clone();
-    let changed_location = old_location != config.weather_location;
     *shared.config.write().await = config;
     persist(&shared).await?;
-    if changed_location {
-        *shared.weather.write().await = None;
-        shared.refresh_weather.notify_one();
-    }
     publish(&shared, &app).await;
     Ok(())
 }
@@ -407,7 +403,6 @@ async fn snapshot(shared: &Shared) -> Snapshot {
         config,
         locale: locale::resolve(&language, &shared.system_locale),
         language,
-        weather: shared.weather.read().await.clone(),
         media: shared.media_status.read().await.clone(),
     }
 }
@@ -548,12 +543,10 @@ pub fn run() {
         config: RwLock::new(dock::DockConfig::default()),
         language: RwLock::new(locale::AUTO.into()),
         system_locale: locale::system_locale(),
-        weather: RwLock::new(None),
         media_status: RwLock::new(MediaStatus::default()),
         notifications: RwLock::new(notifications::NotificationSettings::default()),
         notification_delivery: notification_delivery::NotificationDelivery::default(),
         config_path: OnceLock::new(),
-        refresh_weather: Notify::new(),
         updates,
         port: 47917,
     });
@@ -631,19 +624,6 @@ pub fn run() {
                     tokio::time::sleep(Duration::from_millis(1200)).await;
                 }
             });
-            let weather_shared = shared.clone();
-            let weather_app = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                loop {
-                    let location = weather_shared.config.read().await.weather_location.clone();
-                    let weather = match &location { Some(location) => dock::fetch_weather(location).await.ok(), None => None };
-                    if weather_shared.config.read().await.weather_location == location {
-                        *weather_shared.weather.write().await = weather;
-                        publish(&weather_shared, &weather_app).await;
-                    }
-                    tokio::select! { _ = tokio::time::sleep(Duration::from_secs(900)) => {}, _ = weather_shared.refresh_weather.notified() => {} }
-                }
-            });
             tauri::async_runtime::spawn(async move {
                 loop {
                     let result = media::read_track().await;
@@ -674,6 +654,7 @@ pub fn run() {
             get_pairing,
             rotate_pairing,
             get_snapshot,
+            get_client_count,
             get_autostart,
             set_autostart,
             get_notification_status,
