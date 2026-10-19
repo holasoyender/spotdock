@@ -49,6 +49,14 @@ impl NotificationDelivery {
             .collect()
     }
 
+    pub async fn send_one(&self, client: Uuid, message: &str) -> bool {
+        self.clients
+            .lock()
+            .await
+            .get(&client)
+            .is_some_and(|sender| sender.send(message.to_owned()).is_ok())
+    }
+
     pub fn acknowledge(&self, client: Uuid, notification_id: String) {
         let _ = self.acknowledgements.send((client, notification_id));
     }
@@ -72,6 +80,24 @@ impl NotificationDelivery {
         TestResult {
             connected,
             acknowledged: confirmed.len(),
+        }
+    }
+
+    pub async fn send_test_one(&self, client: Uuid, notification_id: &str, message: &str) -> bool {
+        let mut acknowledgements = self.acknowledgements.subscribe();
+        if !self.send_one(client, message).await {
+            return false;
+        }
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(4);
+        loop {
+            let Ok(Ok((sender, id))) =
+                tokio::time::timeout_at(deadline, acknowledgements.recv()).await
+            else {
+                return false;
+            };
+            if sender == client && id == notification_id {
+                return true;
+            }
         }
     }
 }
@@ -108,5 +134,22 @@ mod tests {
         let result = result.await.unwrap();
         assert_eq!(result.connected, 2);
         assert_eq!(result.acknowledged, 2);
+    }
+
+    #[tokio::test]
+    async fn a_targeted_test_ignores_other_phones_acknowledgements() {
+        let delivery = std::sync::Arc::new(NotificationDelivery::default());
+        let (target, mut target_messages) = delivery.register().await;
+        let (other, mut other_messages) = delivery.register().await;
+        let sender = delivery.clone();
+        let result =
+            tokio::spawn(
+                async move { sender.send_test_one(target, "target-test", "message").await },
+            );
+        assert_eq!(target_messages.recv().await.as_deref(), Some("message"));
+        assert!(other_messages.try_recv().is_err());
+        delivery.acknowledge(other, "target-test".into());
+        delivery.acknowledge(target, "target-test".into());
+        assert!(result.await.unwrap());
     }
 }

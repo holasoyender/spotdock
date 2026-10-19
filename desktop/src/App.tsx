@@ -2,7 +2,6 @@ import { useEffect, useRef, useState, type CSSProperties } from "react"
 import { useTranslation } from "react-i18next"
 import { invoke } from "@tauri-apps/api/core"
 import { listen } from "@tauri-apps/api/event"
-import { Smartphone } from "lucide-react"
 import {
   resolveLocale,
   setAppLocale,
@@ -12,8 +11,6 @@ import {
 } from "../../shared/i18n"
 import { localizeNativeMessage } from "../../shared/nativeMessages"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
 import { ClockSettings } from "./ClockSettings"
 import { DeckSettings } from "./DeckSettings"
 import { WindowChrome } from "./components/desktop/WindowChrome"
@@ -22,7 +19,10 @@ import { Player } from "./components/desktop/Player"
 import { PairingCard } from "./components/desktop/PairingCard"
 import { SettingsPage } from "./components/desktop/SettingsPage"
 import { NotificationsPage } from "./components/desktop/NotificationsPage"
+import { DevicesPage } from "./components/desktop/DevicesPage"
 import { ScreenSchedulePage } from "./components/desktop/ScreenSchedulePage"
+import { DesktopAlarmsPage } from "./components/desktop/DesktopAlarmsPage"
+import type { Alarm } from "../../shared/alarms"
 import {
   defaultDockConfig,
   foregroundForColor,
@@ -61,6 +61,8 @@ const initial: Snapshot = {
   language: "auto",
   locale: "en-US",
   media: { source: "none", message: null },
+  alarms: [],
+  devices: [],
 }
 
 function applyLocale(locale: Locale) {
@@ -97,6 +99,11 @@ export default function App() {
     "--dock-accent": accent,
     "--dock-accent-ink": foregroundForColor(accent),
   } as CSSProperties
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--dock-accent", accent)
+    document.documentElement.style.setProperty("--dock-accent-ink", foregroundForColor(accent))
+  }, [accent])
 
   useEffect(() => {
     invoke<Pairing>("get_pairing")
@@ -226,6 +233,22 @@ export default function App() {
       throw cause
     }
   }
+  const saveAlarm = async (alarm: Alarm) => {
+    try {
+      await invoke("upsert_alarm", { alarm })
+      setError("")
+    } catch (cause) {
+      setError(localizeNativeMessage(cause))
+    }
+  }
+  const testAlarm = async (deviceId: string) => {
+    try {
+      await invoke("test_alarm", { deviceId })
+      setError("")
+    } catch (cause) {
+      setError(localizeNativeMessage(cause))
+    }
+  }
   const changeLanguage = async (language: LanguagePreference) => {
     try {
       await invoke("set_language", { language })
@@ -328,34 +351,21 @@ export default function App() {
 
             {view === "notifications" && <NotificationsPage clients={state.clients} />}
 
+            {view === "alarms" && (
+              <DesktopAlarmsPage
+                alarms={state.alarms}
+                devices={state.devices}
+                onSave={(alarm) => void saveAlarm(alarm)}
+                onTest={(id) => void testAlarm(id)}
+              />
+            )}
+
             {view === "schedule" && (
               <ScreenSchedulePage config={state.config} onChange={changeConfig} />
             )}
 
             {view === "devices" && (
-              <div className="grid min-w-0 gap-5 md:grid-cols-[minmax(0,1fr)_minmax(280px,0.8fr)]">
-                <PairingCard url={pairingUrl} rotate={rotate} />
-                <Card className="min-w-0 border-white/8 bg-[#141817]">
-                  <CardHeader>
-                    <div className="mb-2 flex size-10 items-center justify-center rounded-xl dock-accent-soft dock-accent-text">
-                      <Smartphone className="size-5" />
-                    </div>
-                    <CardTitle>{t("desktop.app.onlineDevices")}</CardTitle>
-                    <CardDescription>
-                      {state.clients === 0
-                        ? t("desktop.app.noPhones")
-                        : t("desktop.app.connectedInNetwork", { count: state.clients })}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4 text-sm text-white/55">
-                    <Separator />
-                    <p>{t("desktop.app.step1")}</p>
-                    <p>{t("desktop.app.step2")}</p>
-                    <p>{t("desktop.app.step3")}</p>
-                    <p className="pt-2 text-xs text-white/35">{t("desktop.app.networkHelp")}</p>
-                  </CardContent>
-                </Card>
-              </div>
+              <DevicesPage devices={state.devices} pairingUrl={pairingUrl} rotate={rotate} />
             )}
 
             {view === "settings" && (

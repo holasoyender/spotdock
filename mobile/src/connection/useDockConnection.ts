@@ -7,11 +7,14 @@ import {
   type SetStateAction,
 } from "react"
 import { invoke } from "@tauri-apps/api/core"
+import { mergeAlarms, type Alarm, type AlarmDevice } from "../../../shared/alarms"
 import { defaultDockConfig, isHexColor, type DockConfig } from "../../../shared/dock"
 import type {
   ActionResult,
+  AlarmTestEvent,
   ControlAction,
   DeckAction,
+  DeviceDisconnectEvent,
   NotificationEvent,
   ScreenEvent,
   Snapshot,
@@ -23,7 +26,7 @@ import { readStored } from "../lib/storage"
 import { resolveLocale, t, type Locale } from "../../../shared/i18n"
 import { localizeNativeMessage } from "../../../shared/nativeMessages"
 
-export type View = "clock" | "player" | "weather" | "deck"
+export type View = "clock" | "player" | "weather" | "deck" | "alarms"
 type ConnectionStatus = "offline" | "connecting" | "connected"
 
 type ConnectionOptions = {
@@ -60,6 +63,16 @@ export function useDockConnection({
   setError,
 }: ConnectionOptions) {
   const [status, setStatus] = useState<ConnectionStatus>("offline")
+  const [deviceId] = useState(() => {
+    const saved = readStored("spotdock:device-id", "")
+    if (/^[0-9a-f-]{36}$/i.test(saved)) return saved
+    const id = crypto.randomUUID()
+    localStorage.setItem("spotdock:device-id", JSON.stringify(id))
+    return id
+  })
+  const [alarms, setAlarms] = useState<Alarm[]>(() => readStored("spotdock:alarms", []))
+  const [devices, setDevices] = useState<AlarmDevice[]>([])
+  const alarmsRef = useRef(alarms)
   const [track, setTrack] = useState<Track>(emptyTrack)
   const [position, setPosition] = useState(0)
   const [accent, setAccent] = useState(() => readStored("spotdock:accent", "#b8ef64"))
@@ -109,6 +122,16 @@ export function useDockConnection({
       socket.current = ws
       ws.onopen = () => {
         if (!stopped) {
+          const model = navigator.userAgent.match(/Android[^;]*;\s*([^;)]+)[;)]/)?.[1]?.trim()
+          ws.send(
+            JSON.stringify({
+              action: "hello",
+              device_id: deviceId,
+              name: model
+                ? `${model} · ${deviceId.slice(0, 4)}`
+                : `Android · ${deviceId.slice(0, 4)}`,
+            }),
+          )
           lastScreenAt.current = 0
           setStatus("connected")
           setError("")
@@ -122,6 +145,23 @@ export function useDockConnection({
             | ActionResult
             | NotificationEvent
             | ScreenEvent
+            | AlarmTestEvent
+            | DeviceDisconnectEvent
+          if (message.kind === "disconnect") {
+            localStorage.removeItem("spotdock:url")
+            setUrl("")
+            setManual("")
+            setDevices([])
+            setStatus("offline")
+            setView("clock")
+            setError(t("mobile.device.disconnected"))
+            ws.close()
+            return
+          }
+          if (message.kind === "alarm_test") {
+            void invoke("test_local_alarm", { alarm: message.alarm }).catch(console.error)
+            return
+          }
           if (message.kind === "notification") {
             if (typeof message.sender === "string" && typeof message.body === "string") {
               setNotifications((current) => [...current.slice(-19), message])
@@ -157,6 +197,22 @@ export function useDockConnection({
             localStorage.setItem("spotdock:accent", JSON.stringify(message.accent))
           }
           const nextConfig = message.config ?? defaultDockConfig
+          if (Array.isArray(message.alarms)) {
+            const merged = mergeAlarms(alarmsRef.current, message.alarms)
+            for (const local of alarmsRef.current) {
+              if (
+                (message.alarms.find((alarm) => alarm.id === local.id)?.updatedAt ?? -1) <
+                local.updatedAt
+              )
+                ws.send(JSON.stringify({ action: "alarm_upsert", alarm: local }))
+            }
+            if (JSON.stringify(merged) !== JSON.stringify(alarmsRef.current)) {
+              alarmsRef.current = merged
+              setAlarms(merged)
+              localStorage.setItem("spotdock:alarms", JSON.stringify(merged))
+            }
+          }
+          if (Array.isArray(message.devices)) setDevices(message.devices)
           if (message.screenAt >= lastScreenAt.current) {
             lastScreenAt.current = message.screenAt
             setScreenOff(Boolean(message.screenOff))
@@ -211,8 +267,16 @@ export function useDockConnection({
       socket.current?.close()
       socket.current = null
     }
-  }, [url])
+  }, [url, deviceId])
 
+  function upsertAlarm(alarm: Alarm) {
+    const next = mergeAlarms(alarmsRef.current, [alarm])
+    alarmsRef.current = next
+    setAlarms(next)
+    localStorage.setItem("spotdock:alarms", JSON.stringify(next))
+    if (socket.current?.readyState === WebSocket.OPEN)
+      socket.current.send(JSON.stringify({ action: "alarm_upsert", alarm }))
+  }
   function sendAction(action: ControlAction | DeckAction) {
     if (socket.current?.readyState !== WebSocket.OPEN) return false
     socket.current.send(JSON.stringify(action))
@@ -236,6 +300,10 @@ export function useDockConnection({
     notifications,
     setNotifications,
     screenOff,
+    alarms,
+    devices,
+    deviceId,
+    upsertAlarm,
     setActionMessage,
     sendAction,
     resetConnection,

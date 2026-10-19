@@ -5,7 +5,86 @@ use std::{
     net::{IpAddr, Ipv4Addr, UdpSocket},
     time::Duration,
 };
+#[cfg(target_os = "android")]
+use tauri::{
+    Manager,
+    plugin::{Builder as PluginBuilder, PluginHandle, TauriPlugin},
+};
 use uuid::Uuid;
+
+#[cfg(target_os = "android")]
+struct AlarmPluginHandle(PluginHandle<tauri::Wry>);
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn sync_alarms(
+    alarms: serde_json::Value,
+    plugin: tauri::State<'_, AlarmPluginHandle>,
+) -> Result<serde_json::Value, String> {
+    plugin
+        .0
+        .run_mobile_plugin("sync", serde_json::json!({ "alarms": alarms }))
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn alarm_status(plugin: tauri::State<'_, AlarmPluginHandle>) -> Result<serde_json::Value, String> {
+    plugin
+        .0
+        .run_mobile_plugin("status", ())
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn request_alarm_permission(plugin: tauri::State<'_, AlarmPluginHandle>) -> Result<(), String> {
+    plugin
+        .0
+        .run_mobile_plugin("requestExact", ())
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn request_alarm_full_screen(plugin: tauri::State<'_, AlarmPluginHandle>) -> Result<(), String> {
+    plugin
+        .0
+        .run_mobile_plugin("requestFullScreen", ())
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn request_alarm_notifications(plugin: tauri::State<'_, AlarmPluginHandle>) -> Result<(), String> {
+    plugin
+        .0
+        .run_mobile_plugin("requestNotifications", ())
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn test_local_alarm(
+    alarm: serde_json::Value,
+    plugin: tauri::State<'_, AlarmPluginHandle>,
+) -> Result<(), String> {
+    plugin
+        .0
+        .run_mobile_plugin("test", serde_json::json!({ "alarm": alarm }))
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "android")]
+fn alarms_plugin() -> TauriPlugin<tauri::Wry> {
+    PluginBuilder::new("alarms")
+        .setup(|app, api| {
+            let handle = api.register_android_plugin("com.spotdock.mobile", "AlarmPlugin")?;
+            app.manage(AlarmPluginHandle(handle));
+            Ok(())
+        })
+        .build()
+}
 
 fn same_bytes(left: &str, right: &str) -> bool {
     left.len() == right.len()
@@ -78,8 +157,22 @@ async fn discover_desktop(token: String, previous_host: String) -> Result<Option
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![discover_desktop])
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(alarms_plugin());
+    #[cfg(target_os = "android")]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        discover_desktop,
+        sync_alarms,
+        alarm_status,
+        request_alarm_permission,
+        request_alarm_full_screen,
+        request_alarm_notifications,
+        test_local_alarm
+    ]);
+    #[cfg(not(target_os = "android"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![discover_desktop]);
+    builder
         .setup(|app| {
             #[cfg(mobile)]
             app.handle().plugin(tauri_plugin_barcode_scanner::init())?;

@@ -19,6 +19,7 @@ export type View =
   | "deck"
   | "devices"
   | "notifications"
+  | "alarms"
   | "schedule"
   | "settings"
 
@@ -68,6 +69,14 @@ const pages: {
     compactLabel: "desktop.nav.notifications",
     heading: "desktop.nav.notifications",
     description: "desktop.heading.notificationsDescription",
+    icon: BellRing,
+  },
+  {
+    view: "alarms",
+    label: "alarms.title",
+    compactLabel: "alarms.title",
+    heading: "alarms.title",
+    description: "desktop.heading.alarmsDescription",
     icon: BellRing,
   },
   {

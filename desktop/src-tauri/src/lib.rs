@@ -1,3 +1,4 @@
+mod alarms;
 mod background;
 #[path = "../../../shared/discovery.rs"]
 mod discovery;
@@ -22,6 +23,7 @@ use chrono::{Datelike, Local, Timelike};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::HashMap,
     net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket},
     path::PathBuf,
     sync::{Arc, OnceLock},
@@ -59,6 +61,8 @@ struct Snapshot {
     language: String,
     locale: &'static str,
     media: MediaStatus,
+    alarms: Vec<alarms::Alarm>,
+    devices: Vec<alarms::DeviceStatus>,
 }
 
 #[derive(Clone, Default, Serialize, PartialEq)]
@@ -78,6 +82,10 @@ struct Shared {
     system_locale: String,
     media_status: RwLock<MediaStatus>,
     notifications: RwLock<notifications::NotificationSettings>,
+    alarms: RwLock<Vec<alarms::Alarm>>,
+    devices: RwLock<Vec<alarms::Device>>,
+    connections: RwLock<HashMap<uuid::Uuid, String>>,
+    app_handle: OnceLock<AppHandle>,
     notification_delivery: notification_delivery::NotificationDelivery,
     config_path: OnceLock<PathBuf>,
     updates: broadcast::Sender<String>,
@@ -112,6 +120,13 @@ pub enum Control {
 struct DeckRequest {
     action: String,
     button_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "action", rename_all = "snake_case")]
+enum AlarmRequest {
+    Hello { device_id: String, name: String },
+    AlarmUpsert { alarm: alarms::Alarm },
 }
 
 #[derive(Deserialize)]
@@ -242,6 +257,33 @@ async fn send_test_notification(
 }
 
 #[tauri::command]
+async fn send_device_test_notification(
+    device_id: String,
+    sender: String,
+    body: String,
+    shared: tauri::State<'_, Arc<Shared>>,
+) -> Result<bool, String> {
+    if sender.trim().is_empty() || body.trim().is_empty() || sender.len() > 100 || body.len() > 300
+    {
+        return Err("Invalid test notification".into());
+    }
+    let recipient = recipient_for_device(&shared, &device_id).await?;
+    let event = notifications::NotificationEvent {
+        kind: "notification",
+        id: uuid::Uuid::new_v4().to_string(),
+        app: "spotdock".into(),
+        sender,
+        body,
+        image: None,
+    };
+    let message = serde_json::to_string(&event).map_err(|error| error.to_string())?;
+    Ok(shared
+        .notification_delivery
+        .send_test_one(recipient, &event.id, &message)
+        .await)
+}
+
+#[tauri::command]
 async fn get_spotify_status() -> Result<spotify_web::AuthStatus, String> {
     spotify_web::status().await
 }
@@ -318,6 +360,101 @@ async fn set_dock_config(
 }
 
 #[tauri::command]
+async fn upsert_alarm(
+    alarm: alarms::Alarm,
+    shared: tauri::State<'_, Arc<Shared>>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let changed = alarms::upsert(&mut *shared.alarms.write().await, alarm)?;
+    if changed {
+        persist(&shared).await?;
+        publish(&shared, &app).await;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn test_alarm(
+    device_id: String,
+    shared: tauri::State<'_, Arc<Shared>>,
+) -> Result<(), String> {
+    send_alarm_test(&shared, &device_id).await
+}
+
+#[tauri::command]
+async fn rename_device(
+    device_id: String,
+    name: String,
+    shared: tauri::State<'_, Arc<Shared>>,
+    app: AppHandle,
+) -> Result<(), String> {
+    if uuid::Uuid::parse_str(&device_id).is_err() {
+        return Err("Invalid device".into());
+    }
+    {
+        let mut devices = shared.devices.write().await;
+        let device = devices
+            .iter_mut()
+            .find(|device| device.id == device_id)
+            .ok_or("Device not found")?;
+        device.rename(&name)?;
+    }
+    persist(&shared).await?;
+    publish(&shared, &app).await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn disconnect_device(
+    device_id: String,
+    shared: tauri::State<'_, Arc<Shared>>,
+) -> Result<(), String> {
+    let recipient = recipient_for_device(&shared, &device_id).await?;
+    let message = serde_json::json!({ "kind": "disconnect" }).to_string();
+    if shared
+        .notification_delivery
+        .send_one(recipient, &message)
+        .await
+    {
+        Ok(())
+    } else {
+        Err("Device is offline".into())
+    }
+}
+
+async fn recipient_for_device(shared: &Shared, device_id: &str) -> Result<uuid::Uuid, String> {
+    if uuid::Uuid::parse_str(device_id).is_err() {
+        return Err("Invalid device".into());
+    }
+    shared
+        .connections
+        .read()
+        .await
+        .iter()
+        .find_map(|(client, id)| (id == device_id).then_some(*client))
+        .ok_or_else(|| "Device is offline".into())
+}
+
+async fn send_alarm_test(shared: &Shared, device_id: &str) -> Result<(), String> {
+    let recipient = recipient_for_device(shared, device_id).await?;
+    let alarm = serde_json::json!({
+        "id": uuid::Uuid::new_v4().to_string(), "time": Local::now().format("%H:%M").to_string(),
+        "title": "SpotDock", "message": "Test alarm", "tone": "system",
+        "dismissMode": "slide", "snoozeMinutes": 0,
+    });
+    let event = serde_json::json!({ "kind": "alarm_test", "alarm": alarm }).to_string();
+    if shared
+        .notification_delivery
+        .send_one(recipient, &event)
+        .await
+    {
+        Ok(())
+    } else {
+        Err("Device is offline".into())
+    }
+}
+
+#[tauri::command]
 async fn set_language(
     language: String,
     shared: tauri::State<'_, Arc<Shared>>,
@@ -385,6 +522,8 @@ async fn persist(shared: &Shared) -> Result<(), String> {
             language: shared.language.read().await.clone(),
             pairing_token: shared.token.read().await.clone(),
             notifications: shared.notifications.read().await.clone(),
+            alarms: shared.alarms.read().await.clone(),
+            devices: shared.devices.read().await.clone(),
         },
     )
 }
@@ -393,6 +532,18 @@ async fn snapshot(shared: &Shared) -> Snapshot {
     let language = shared.language.read().await.clone();
     let config = shared.config.read().await.clone();
     let now = Local::now();
+    let connections = shared.connections.read().await;
+    let devices = shared
+        .devices
+        .read()
+        .await
+        .iter()
+        .map(|device| alarms::DeviceStatus {
+            id: device.id.clone(),
+            name: device.name.clone(),
+            connected: connections.values().any(|id| id == &device.id),
+        })
+        .collect();
     Snapshot {
         kind: "state",
         track: shared.track.read().await.clone(),
@@ -404,6 +555,8 @@ async fn snapshot(shared: &Shared) -> Snapshot {
         locale: locale::resolve(&language, &shared.system_locale),
         language,
         media: shared.media_status.read().await.clone(),
+        alarms: shared.alarms.read().await.clone(),
+        devices,
     }
 }
 
@@ -433,7 +586,7 @@ async fn ws_upgrade(
     if auth.token != *shared.token.read().await {
         return axum::http::StatusCode::UNAUTHORIZED.into_response();
     }
-    ws.max_message_size(2048)
+    ws.max_message_size(8192)
         .on_upgrade(move |socket| ws_client(socket, shared))
         .into_response()
 }
@@ -461,7 +614,36 @@ async fn ws_client(socket: WebSocket, shared: Arc<Shared>) {
                 received = stream.next() => {
                     match received {
                         Some(Ok(Message::Text(text))) => {
-                            if let Ok(ack) = serde_json::from_str::<NotificationAck>(&text) {
+                            if let Ok(request) = serde_json::from_str::<AlarmRequest>(&text) {
+                                match request {
+                                    AlarmRequest::Hello { device_id, name } => {
+                                        if uuid::Uuid::parse_str(&device_id).is_ok() && !name.trim().is_empty() && name.chars().count() <= 80 {
+                                            shared.connections.write().await.insert(client_id, device_id.clone());
+                                            let mut devices = shared.devices.write().await;
+                                            if let Some(device) = devices.iter_mut().find(|device| device.id == device_id) {
+                                                device.update_hello_name(name);
+                                            } else if devices.len() < 64 {
+                                                devices.push(alarms::Device::from_hello(device_id, name));
+                                            }
+                                            drop(devices);
+                                            if let Some(app) = shared.app_handle.get() {
+                                                let _ = persist(&shared).await;
+                                                publish(&shared, app).await;
+                                            }
+                                        }
+                                    }
+                                    AlarmRequest::AlarmUpsert { alarm } => {
+                                        if shared.connections.read().await.contains_key(&client_id) {
+                                            if let Ok(true) = alarms::upsert(&mut *shared.alarms.write().await, alarm) {
+                                                if let Some(app) = shared.app_handle.get() {
+                                                    let _ = persist(&shared).await;
+                                                    publish(&shared, app).await;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else if let Ok(ack) = serde_json::from_str::<NotificationAck>(&text) {
                                 if ack.action == "notification_ack" && ack.id.len() <= 64 {
                                     shared.notification_delivery.acknowledge(client_id, ack.id);
                                 }
@@ -482,7 +664,11 @@ async fn ws_client(socket: WebSocket, shared: Arc<Shared>) {
         }
     }
     shared.notification_delivery.unregister(client_id).await;
+    shared.connections.write().await.remove(&client_id);
     *shared.clients.write().await -= 1;
+    if let Some(app) = shared.app_handle.get() {
+        publish(&shared, app).await;
+    }
 }
 
 async fn run_server(shared: Arc<Shared>) {
@@ -545,6 +731,10 @@ pub fn run() {
         system_locale: locale::system_locale(),
         media_status: RwLock::new(MediaStatus::default()),
         notifications: RwLock::new(notifications::NotificationSettings::default()),
+        alarms: RwLock::new(Vec::new()),
+        devices: RwLock::new(Vec::new()),
+        connections: RwLock::new(HashMap::new()),
+        app_handle: OnceLock::new(),
         notification_delivery: notification_delivery::NotificationDelivery::default(),
         config_path: OnceLock::new(),
         updates,
@@ -566,12 +756,15 @@ pub fn run() {
             let saved = dock::load(&path);
             dock::save(&path, &saved)?;
             let _ = shared.config_path.set(path);
+            let _ = shared.app_handle.set(app.handle().clone());
             tauri::async_runtime::block_on(async {
                 *shared.accent.write().await = saved.accent;
                 *shared.config.write().await = saved.config;
                 *shared.language.write().await = saved.language;
                 *shared.token.write().await = saved.pairing_token;
                 *shared.notifications.write().await = saved.notifications;
+                *shared.alarms.write().await = saved.alarms;
+                *shared.devices.write().await = saved.devices;
             });
             let selected_language = tauri::async_runtime::block_on(shared.language.read()).clone();
             let effective = locale::resolve(&selected_language, &shared.system_locale);
@@ -661,6 +854,7 @@ pub fn run() {
             request_notification_access,
             set_notification_settings,
             send_test_notification,
+            send_device_test_notification,
             get_spotify_status,
             get_media_sessions,
             set_media_session,
@@ -670,6 +864,10 @@ pub fn run() {
             control,
             set_accent,
             set_dock_config,
+            upsert_alarm,
+            test_alarm,
+            rename_device,
+            disconnect_device,
             set_language,
             search_locations,
             trigger_deck_button

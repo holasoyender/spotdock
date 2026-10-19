@@ -261,6 +261,10 @@ pub struct SavedState {
     pub pairing_token: String,
     #[serde(default)]
     pub notifications: crate::notifications::NotificationSettings,
+    #[serde(default)]
+    pub alarms: Vec<crate::alarms::Alarm>,
+    #[serde(default)]
+    pub devices: Vec<crate::alarms::Device>,
 }
 
 fn default_language() -> String {
@@ -279,6 +283,8 @@ impl Default for SavedState {
             language: default_language(),
             pairing_token: new_pairing_token(),
             notifications: crate::notifications::NotificationSettings::default(),
+            alarms: Vec::new(),
+            devices: Vec::new(),
         }
     }
 }
@@ -300,6 +306,7 @@ pub fn load(path: &Path) -> SavedState {
         .filter(|saved| {
             is_hex(&saved.accent)
                 && saved.config.validate().is_ok()
+                && saved.alarms.iter().all(|alarm| alarm.validate().is_ok())
                 && saved.pairing_token.len() == 32
                 && saved
                     .pairing_token

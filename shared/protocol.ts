@@ -1,5 +1,6 @@
 import type { DockConfig } from "./dock"
 import type { LanguagePreference, Locale } from "./i18n"
+import type { Alarm, AlarmDevice } from "./alarms"
 
 /** Shape of the media state sent by the desktop application. */
 export type Track = {
@@ -34,7 +35,12 @@ export type Snapshot = {
   language: LanguagePreference
   locale: Locale
   media: { source: string; message: string | null }
+  alarms: Alarm[]
+  devices: AlarmDevice[]
 }
+
+export type AlarmTestEvent = { kind: "alarm_test"; alarm: Alarm }
+export type DeviceDisconnectEvent = { kind: "disconnect" }
 
 export type TrackUpdate = {
   kind: "track"

@@ -43,7 +43,6 @@ export function WeatherView({
   loading,
   onLocationSettings,
   onActivity,
-  onDialogChange,
 }: {
   now: Date
   config: DockConfig
@@ -52,13 +51,11 @@ export function WeatherView({
   loading: boolean
   onLocationSettings: () => void
   onActivity: () => void
-  onDialogChange: (open: boolean) => void
 }) {
   const [selection, setSelection] = useState<Selection | null>(null)
   const selected = forecast ? forecastForToday(forecast, now) : null
   function choose(next: Selection | null) {
     setSelection(next)
-    onDialogChange(Boolean(next))
     onActivity()
   }
   useEffect(() => {
@@ -69,7 +66,6 @@ export function WeatherView({
     document.addEventListener("keydown", onKey)
     return () => document.removeEventListener("keydown", onKey)
   }, [selection])
-  useEffect(() => () => onDialogChange(false), [])
   return (
     <main
       className="relative flex min-h-0 flex-1 flex-col gap-2 overflow-hidden py-1"

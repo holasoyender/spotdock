@@ -1,0 +1,9 @@
+<resources>
+    <string name="alarm_channel">Alarmas de SpotDock</string>
+    <string name="alarm_default_title">Alarma</string>
+    <string name="alarm_dismiss">Apagar</string>
+    <string name="alarm_snooze">Posponer</string>
+    <string name="alarm_tap">Toca cualquier parte para apagar</string>
+    <string name="alarm_slide">Desliza para apagar →</string>
+    <string name="alarm_snooze_minutes">Posponer %1$d min</string>
+</resources>

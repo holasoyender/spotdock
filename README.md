@@ -39,6 +39,10 @@ El alias del keystore incluido localmente es `spotdock`. `storePassword` es la c
 
 El APK firmado se guarda en `mobile/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk`. El comando compila en modo release por defecto; `--release` no es una opción de `tauri android build`. Si el dispositivo ya tiene una versión `com.spotdock.mobile` firmada con otra clave, desinstálala antes de instalar este APK; conserva el mismo keystore para futuras actualizaciones. Para compilar un APK de depuración sin estas credenciales, usa `cd mobile; bun tauri android build --debug --target aarch64 --apk --ci`.
 
+Para convertir un teléfono de producción en un dock que arranque solo y no pueda abandonarse con Inicio o Recientes, sigue [la preparación de Android como dispositivo dedicado](docs/android-dedicated-mode.md). Esta función solo está en la APK release; la variante debug sigue siendo una aplicación normal para pruebas.
+
+Las alarmas se editan desde el móvil o el escritorio y se programan en cada teléfono. Consulta [alarmas, sonidos y permisos Android](docs/alarms.md).
+
 Para Windows:
 
 ```powershell
@@ -55,6 +59,8 @@ El ejecutable queda en `desktop/src-tauri/target/debug/spotdock-desktop.exe`.
 2. En **Reloj y tiempo**, elige reloj digital o analógico, formato de hora, segundos, ciudad y °C/°F. La ubicación inicial es Madrid y se puede cambiar mediante búsqueda.
 3. En **Botonera**, añade hasta 24 botones. Puedes elegir texto, icono, imagen cuadrada y color de fondo. Cada botón puede abrir una web, abrir un `.exe` o `.lnk`, enviar un atajo a la ventana activa de Windows, controlar la música o cambiar de vista en el móvil.
 4. Abre SpotDock en Android y escanea el QR del escritorio una vez. La dirección y la clave quedan guardadas en el móvil; este se reconecta automáticamente tras reiniciar cualquiera de los dispositivos. Si cambia la IP del PC, el móvil lo busca en la red local. También puedes pegar manualmente la dirección desde **Ajustes**.
+
+En **Dispositivos** del escritorio aparecen los móviles emparejados, incluso cuando están sin conexión. Puedes darles un nombre que se mostrará al elegir los destinos de una alarma, enviar una notificación o alarma de prueba a un móvil concreto y desconectarlo. **Desconectar** borra el emparejamiento guardado en ese teléfono; para volver a conectarlo, escanea el QR de nuevo. Las alarmas y ajustes locales del móvil permanecen en el teléfono.
 
 En Android 17 o posterior, concede a SpotDock el permiso de acceso a la red local cuando el sistema lo solicite; es necesario para conectar con el PC y para descubrirlo si cambia su IP. Si lo denegaste, puedes activarlo en los permisos de la aplicación dentro de los ajustes de Android. Si se ha regenerado la clave de emparejamiento del escritorio, escanea de nuevo el QR: el descubrimiento automático actualiza la IP, pero no sustituye una clave antigua.
 

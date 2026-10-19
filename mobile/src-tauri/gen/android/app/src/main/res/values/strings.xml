@@ -1,4 +1,11 @@
 <resources>
     <string name="app_name">"SpotDock"</string>
     <string name="main_activity_title">"SpotDock"</string>
+    <string name="alarm_channel">SpotDock alarms</string>
+    <string name="alarm_default_title">Alarm</string>
+    <string name="alarm_dismiss">Dismiss</string>
+    <string name="alarm_snooze">Snooze</string>
+    <string name="alarm_tap">Tap anywhere to dismiss</string>
+    <string name="alarm_slide">Slide to dismiss →</string>
+    <string name="alarm_snooze_minutes">Snooze %1$d min</string>
 </resources>

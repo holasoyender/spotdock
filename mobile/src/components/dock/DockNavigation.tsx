@@ -1,5 +1,6 @@
 import {
   Clock3,
+  BellRing,
   CloudSun,
   Disc3,
   Grid3X3,
@@ -42,7 +43,6 @@ export function DockNavigation({
         <div className="flex size-9 items-center justify-center rounded-xl dock-accent-bg">
           <Disc3 className="size-5" />
         </div>
-        <span className="hidden text-lg font-semibold tracking-tight sm:inline">SpotDock</span>
       </div>
       <nav
         aria-label={t("mobile.nav.views")}
@@ -50,62 +50,75 @@ export function DockNavigation({
       >
         <Button
           variant="ghost"
-          size="sm"
+          size="icon-sm"
+          aria-label={t("alarms.title")}
+          aria-current={view === "alarms" ? "page" : undefined}
+          onClick={() => openView("alarms")}
+          className={view === "alarms" ? "dock-view-active" : "text-white/45"}
+        >
+          <BellRing className="size-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
           aria-label={t("common.clock")}
           aria-current={view === "clock" ? "page" : undefined}
           onClick={() => openView("clock")}
           className={view === "clock" ? "dock-view-active" : "text-white/45"}
         >
           <Clock3 className="size-4" />
-          <span className="hidden text-xs md:inline">{t("common.clock")}</span>
         </Button>
         <Button
           variant="ghost"
-          size="sm"
+          size="icon-sm"
           aria-label={t("common.music")}
           aria-current={view === "player" ? "page" : undefined}
           onClick={() => openView("player")}
           className={view === "player" ? "dock-view-active" : "text-white/45"}
         >
           <Music2 className="size-4" />
-          <span className="hidden text-xs md:inline">{t("common.music")}</span>
         </Button>
         <Button
           variant="ghost"
-          size="sm"
+          size="icon-sm"
           aria-label={t("common.weather")}
           aria-current={view === "weather" ? "page" : undefined}
           onClick={() => openView("weather")}
           className={view === "weather" ? "dock-view-active" : "text-white/45"}
         >
           <CloudSun className="size-4" />
-          <span className="hidden text-xs md:inline">{t("common.weather")}</span>
         </Button>
         <Button
           variant="ghost"
-          size="sm"
+          size="icon-sm"
           aria-label={t("common.deck")}
           aria-current={view === "deck" ? "page" : undefined}
           onClick={() => openView("deck")}
           className={view === "deck" ? "dock-view-active" : "text-white/45"}
         >
           <Grid3X3 className="size-4" />
-          <span className="hidden text-xs md:inline">{t("common.deck")}</span>
         </Button>
       </nav>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <Badge
           variant="outline"
-          className={`gap-1 border-white/15 ${connected ? "dock-accent-text" : "text-white/45"}`}
-        >
-          {connected ? <Wifi className="size-3" /> : <WifiOff className="size-3" />}
-          <span className="hidden sm:inline">
-            {connected
+          aria-label={
+            connected
               ? t("common.connected")
               : status === "connecting"
                 ? t("common.connecting")
-                : t("common.offline")}
-          </span>
+                : t("common.offline")
+          }
+          title={
+            connected
+              ? t("common.connected")
+              : status === "connecting"
+                ? t("common.connecting")
+                : t("common.offline")
+          }
+          className={`size-8 border-white/15 p-0 ${connected ? "dock-accent-text" : "text-white/45"}`}
+        >
+          {connected ? <Wifi className="size-4" /> : <WifiOff className="size-4" />}
         </Badge>
         {!connected && (
           <Button variant="ghost" size="icon" aria-label={t("common.scanQr")} onClick={scanCode}>

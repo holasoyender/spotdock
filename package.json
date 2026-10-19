@@ -13,15 +13,18 @@
     "check": "bun run --cwd desktop check && bun run --cwd mobile check",
     "test": "bun test",
     "build:frontends": "bun run --cwd desktop build && bun run --cwd mobile build",
-    "format": "prettier --write \"desktop/src/**/*.{ts,tsx}\" \"mobile/src/**/*.{ts,tsx}\" \"shared/**/*.ts\" \"shared/locales/*.json\" \"tests/**/*.ts\" \"desktop/vite.config.ts\" \"mobile/vite.config.ts\"",
-    "format:check": "prettier --check \"desktop/src/**/*.{ts,tsx}\" \"mobile/src/**/*.{ts,tsx}\" \"shared/**/*.ts\" \"shared/locales/*.json\" \"tests/**/*.ts\" \"desktop/vite.config.ts\" \"mobile/vite.config.ts\""
+    "format": "prettier --write \"desktop/src/**/*.{ts,tsx}\" \"mobile/src/**/*.{ts,tsx}\" \"shared/**/*.{ts,tsx}\" \"shared/locales/*.json\" \"tests/**/*.ts\" \"desktop/vite.config.ts\" \"mobile/vite.config.ts\"",
+    "format:check": "prettier --check \"desktop/src/**/*.{ts,tsx}\" \"mobile/src/**/*.{ts,tsx}\" \"shared/**/*.{ts,tsx}\" \"shared/locales/*.json\" \"tests/**/*.ts\" \"desktop/vite.config.ts\" \"mobile/vite.config.ts\""
   },
   "dependencies": {
+    "@base-ui/react": "^1.9.0",
     "i18next": "^26.4.4",
-    "react-i18next": "^17.0.16"
+    "react-i18next": "^17.0.16",
+    "react": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
+    "@types/react": "^19.0.0",
     "prettier": "3.6.2"
   }
 }

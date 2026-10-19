@@ -9,6 +9,11 @@ for (const [key, value] of Object.entries(spanish)) {
 exact.set("cancelled", "native.scannerCancelled")
 exact.set("Something went wrong configuring the BarcodeScanner", "native.scannerConfig")
 exact.set("No permission to use camera. Did you request it yet?", "native.scannerPermission")
+exact.set("Device is offline", "native.deviceOffline")
+exact.set("Device not found", "native.deviceNotFound")
+exact.set("Invalid device", "native.invalidDevice")
+exact.set("Invalid device name", "native.invalidDeviceName")
+exact.set("Invalid test notification", "native.invalidTestNotification")
 
 const patterns: [RegExp, TranslationKey, string][] = [
   [

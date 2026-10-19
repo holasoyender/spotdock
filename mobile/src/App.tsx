@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react"
 import { useTranslation } from "react-i18next"
+import { invoke } from "@tauri-apps/api/core"
 import { Format, requestPermissions, scan } from "@tauri-apps/plugin-barcode-scanner"
 import { DockNavigation } from "./components/dock/DockNavigation"
 import { MobileSettings } from "./components/dock/MobileSettings"
 import { NotificationBanner } from "./components/dock/NotificationBanner"
+import { MobileAlarmPanel } from "./components/dock/MobileAlarmPanel"
+import { forDevice } from "../../shared/alarms"
 import { ClockView } from "./views/ClockView"
 import { WeatherView } from "./views/WeatherView"
 import { PlayerView } from "./views/PlayerView"
@@ -50,7 +53,6 @@ export default function App() {
     readStored("spotdock:preferences", { awake: true, brightness: 100, compact: false }),
   )
   const [settings, setSettings] = useState(false)
-  const [weatherDialogOpen, setWeatherDialogOpen] = useState(false)
   const [localWeatherLocation, setLocalWeatherLocation] = useState<Location | null>(() =>
     readStored("spotdock:weather-location", null),
   )
@@ -72,6 +74,9 @@ export default function App() {
   const [navigationVisible, setNavigationVisible] = useState(false)
   const navigationTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const seeking = useRef(false)
+  const scanning = useRef(false)
+  const activePointers = useRef(new Set<number>())
+  const activeTouches = useRef(0)
   const lastActivity = useRef(Date.now())
   const {
     status,
@@ -85,6 +90,10 @@ export default function App() {
     notifications,
     setNotifications,
     screenOff: desktopScreenOff,
+    alarms,
+    devices,
+    deviceId,
+    upsertAlarm,
     setActionMessage,
     sendAction,
     resetConnection,
@@ -107,6 +116,11 @@ export default function App() {
     clock,
   )
   const screenOff = scheduledOff && !settings && clock.getTime() >= wakeUntil
+  const [alarmPermissions, setAlarmPermissions] = useState({
+    exactAllowed: true,
+    fullScreenAllowed: true,
+    notificationsAllowed: true,
+  })
   const autoLocale = url ? desktopLocale : resolveLocale(navigator.language)
   const locale = language === "auto" ? autoLocale : resolveLocale(language)
   const selectedAccent = localAccent ?? (url ? accent : "#b8ef64")
@@ -118,8 +132,26 @@ export default function App() {
   } as CSSProperties
 
   useEffect(() => {
+    document.documentElement.style.setProperty("--dock-accent", color)
+    document.documentElement.style.setProperty("--dock-accent-ink", foregroundForColor(color))
+  }, [color])
+
+  useEffect(() => {
     localStorage.setItem("spotdock:preferences", JSON.stringify(preferences))
   }, [preferences])
+  useEffect(() => {
+    void invoke<typeof alarmPermissions>("sync_alarms", { alarms: forDevice(alarms, deviceId) })
+      .then(setAlarmPermissions)
+      .catch((cause) => setError(localizeNativeMessage(cause)))
+  }, [alarms, deviceId])
+  useEffect(() => {
+    const refresh = () =>
+      void invoke<typeof alarmPermissions>("alarm_status")
+        .then(setAlarmPermissions)
+        .catch(() => {})
+    document.addEventListener("visibilitychange", refresh)
+    return () => document.removeEventListener("visibilitychange", refresh)
+  }, [])
   useEffect(() => {
     localStorage.setItem("spotdock:weather-location", JSON.stringify(localWeatherLocation))
   }, [localWeatherLocation])
@@ -177,17 +209,88 @@ export default function App() {
     return () => clearInterval(timer)
   }, [track.playing, track.durationMs, status])
   useEffect(() => {
+    const markActivity = () => {
+      lastActivity.current = Date.now()
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      activePointers.current.add(event.pointerId)
+      markActivity()
+    }
+    const onPointerEnd = (event: PointerEvent) => {
+      activePointers.current.delete(event.pointerId)
+      markActivity()
+    }
+    const markDrag = (event: PointerEvent) => {
+      if (event.buttons) markActivity()
+    }
+    const onTouchStart = (event: TouchEvent) => {
+      activeTouches.current = event.touches.length
+      markActivity()
+    }
+    const onTouchEnd = (event: TouchEvent) => {
+      activeTouches.current = event.touches.length
+      markActivity()
+    }
+    const onBlur = () => {
+      activePointers.current.clear()
+      activeTouches.current = 0
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") markActivity()
+    }
+    document.addEventListener("pointerdown", onPointerDown, true)
+    window.addEventListener("pointerup", onPointerEnd, true)
+    window.addEventListener("pointercancel", onPointerEnd, true)
+    document.addEventListener("pointermove", markDrag, true)
+    document.addEventListener("touchstart", onTouchStart, { capture: true, passive: true })
+    document.addEventListener("touchend", onTouchEnd, true)
+    document.addEventListener("touchcancel", onTouchEnd, true)
+    document.addEventListener("keydown", markActivity, true)
+    document.addEventListener("input", markActivity, true)
+    document.addEventListener("click", markActivity, true)
+    document.addEventListener("scroll", markActivity, true)
+    document.addEventListener("wheel", markActivity, { capture: true, passive: true })
+    document.addEventListener("touchmove", markActivity, { capture: true, passive: true })
+    document.addEventListener("visibilitychange", onVisibilityChange)
+    window.addEventListener("blur", onBlur)
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true)
+      window.removeEventListener("pointerup", onPointerEnd, true)
+      window.removeEventListener("pointercancel", onPointerEnd, true)
+      document.removeEventListener("pointermove", markDrag, true)
+      document.removeEventListener("touchstart", onTouchStart, true)
+      document.removeEventListener("touchend", onTouchEnd, true)
+      document.removeEventListener("touchcancel", onTouchEnd, true)
+      document.removeEventListener("keydown", markActivity, true)
+      document.removeEventListener("input", markActivity, true)
+      document.removeEventListener("click", markActivity, true)
+      document.removeEventListener("scroll", markActivity, true)
+      document.removeEventListener("wheel", markActivity, true)
+      document.removeEventListener("touchmove", markActivity, true)
+      document.removeEventListener("visibilitychange", onVisibilityChange)
+      window.removeEventListener("blur", onBlur)
+    }
+  }, [])
+  useEffect(() => {
     const timer = setInterval(() => {
       if (
-        !settings &&
-        !weatherDialogOpen &&
-        (view === "weather" || (view === "player" && !track.playing)) &&
-        Date.now() - lastActivity.current > effectiveConfig.returnAfterSeconds * 1000
+        document.visibilityState !== "visible" ||
+        scanning.current ||
+        activePointers.current.size > 0 ||
+        activeTouches.current > 0
       )
-        setView(view === "weather" && track.playing ? "player" : "clock")
+        return
+      const destination = connected && track.playing ? "player" : "clock"
+      if (
+        (settings || view !== destination) &&
+        Date.now() - lastActivity.current >= effectiveConfig.returnAfterSeconds * 1000
+      ) {
+        setSettings(false)
+        setView(destination)
+      }
     }, 1000)
     return () => clearInterval(timer)
-  }, [view, track.playing, effectiveConfig.returnAfterSeconds, settings, weatherDialogOpen])
+  }, [view, connected, track.playing, effectiveConfig.returnAfterSeconds, settings])
   useEffect(
     () => () => {
       if (navigationTimer.current) clearTimeout(navigationTimer.current)
@@ -220,6 +323,7 @@ export default function App() {
     setSettings(false)
   }
   async function scanCode() {
+    scanning.current = true
     try {
       const permission = await requestPermissions()
       if (permission === "denied") throw new Error(t("mobile.error.camera"))
@@ -228,6 +332,9 @@ export default function App() {
     } catch (cause) {
       setError(localizeNativeMessage(cause))
       setSettings(true)
+    } finally {
+      scanning.current = false
+      lastActivity.current = Date.now()
     }
   }
   function send(action: Action) {
@@ -326,7 +433,6 @@ export default function App() {
             forecast={forecast}
             loading={weatherLoading}
             onLocationSettings={() => setSettings(true)}
-            onDialogChange={setWeatherDialogOpen}
             onActivity={() => {
               lastActivity.current = Date.now()
             }}
@@ -339,6 +445,75 @@ export default function App() {
             onPress={pressButton}
             message={actionMessage}
           />
+        )}
+        {view === "alarms" && (
+          <div
+            className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-14 sm:px-7"
+            onScroll={() => {
+              lastActivity.current = Date.now()
+            }}
+          >
+            <div className="mx-auto flex max-w-3xl flex-col gap-5">
+              <h1 className="text-2xl font-semibold">{t("alarms.title")}</h1>
+              {!alarmPermissions.exactAllowed && (
+                <div className="rounded-xl border border-amber-300/30 bg-amber-300/10 p-3 text-sm">
+                  <p>{t("alarms.exactPermission")}</p>
+                  <button
+                    type="button"
+                    className="mt-2 rounded-lg dock-accent-bg px-3 py-2"
+                    onClick={() =>
+                      void invoke("request_alarm_permission").catch((cause) =>
+                        setError(localizeNativeMessage(cause)),
+                      )
+                    }
+                  >
+                    {t("alarms.grantPermission")}
+                  </button>
+                </div>
+              )}
+              {!alarmPermissions.fullScreenAllowed && (
+                <div className="rounded-xl border border-amber-300/30 bg-amber-300/10 p-3 text-sm">
+                  <p>{t("alarms.fullScreenPermission")}</p>
+                  <button
+                    type="button"
+                    className="mt-2 rounded-lg dock-accent-bg px-3 py-2"
+                    onClick={() =>
+                      void invoke("request_alarm_full_screen").catch((cause) =>
+                        setError(localizeNativeMessage(cause)),
+                      )
+                    }
+                  >
+                    {t("alarms.grantFullScreen")}
+                  </button>
+                </div>
+              )}
+              {!alarmPermissions.notificationsAllowed && (
+                <div className="rounded-xl border border-amber-300/30 bg-amber-300/10 p-3 text-sm">
+                  <p>{t("alarms.notificationsPermission")}</p>
+                  <button
+                    type="button"
+                    className="mt-2 rounded-lg dock-accent-bg px-3 py-2"
+                    onClick={() =>
+                      void invoke("request_alarm_notifications").catch((cause) =>
+                        setError(localizeNativeMessage(cause)),
+                      )
+                    }
+                  >
+                    {t("alarms.grantNotifications")}
+                  </button>
+                </div>
+              )}
+              <MobileAlarmPanel
+                alarms={alarms}
+                devices={
+                  devices.some((device) => device.id === deviceId)
+                    ? devices
+                    : [...devices, { id: deviceId, name: t("alarms.thisPhone"), connected: true }]
+                }
+                onSave={upsertAlarm}
+              />
+            </div>
+          </div>
         )}
       </div>
       <MobileSettings
