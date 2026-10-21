@@ -3,6 +3,7 @@ package com.spotdock.mobile
 import android.Manifest
 import android.app.ActivityManager
 import android.app.admin.DevicePolicyManager
+import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
 import android.content.IntentFilter
@@ -31,7 +32,32 @@ class MainActivity : TauriActivity() {
   override fun onResume() {
     super.onResume()
     hideSystemBars()
+    try {
+      AlarmScheduler.restore(this)
+    } catch (error: RuntimeException) {
+      Log.e("SpotDock", "Could not restore alarms", error)
+    }
     enterDedicatedModeIfOwned()
+  }
+
+  /** System permission screens are outside the package allowed by lock task mode. */
+  fun launchPermissionSettings(request: Intent, fallback: Intent? = null) {
+    val policy = getSystemService(DevicePolicyManager::class.java)
+    val wasLocked = !BuildConfig.DEBUG && policy.isDeviceOwnerApp(packageName) &&
+      getSystemService(ActivityManager::class.java).lockTaskModeState ==
+        ActivityManager.LOCK_TASK_MODE_LOCKED
+    if (wasLocked) stopLockTask()
+    try {
+      try {
+        startActivity(request)
+      } catch (error: ActivityNotFoundException) {
+        if (fallback == null) throw error
+        startActivity(fallback)
+      }
+    } catch (error: RuntimeException) {
+      if (wasLocked) enterDedicatedModeIfOwned()
+      throw error
+    }
   }
 
   private fun enterDedicatedModeIfOwned() {

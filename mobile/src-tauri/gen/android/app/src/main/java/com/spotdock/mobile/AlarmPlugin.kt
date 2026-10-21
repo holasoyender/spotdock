@@ -3,6 +3,7 @@ package com.spotdock.mobile
 import android.app.Activity
 import android.app.NotificationManager
 import android.Manifest
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -13,11 +14,32 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
-import org.json.JSONArray
 import org.json.JSONObject
 
 @TauriPlugin
 class AlarmPlugin(private val activity: Activity) : Plugin(activity) {
+  private fun openSettings(invoke: Invoke, request: Intent, fallback: Intent? = null) {
+    activity.runOnUiThread {
+      try {
+        if (activity is MainActivity) activity.launchPermissionSettings(request, fallback)
+        else {
+          try { activity.startActivity(request) }
+          catch (error: ActivityNotFoundException) {
+            if (fallback == null) throw error
+            activity.startActivity(fallback)
+          }
+        }
+        invoke.resolve()
+      } catch (error: Exception) {
+        invoke.reject(error.message ?: "Could not open alarm settings")
+      }
+    }
+  }
+
+  private fun appSettings(): Intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+    data = Uri.parse("package:${activity.packageName}")
+  }
+
   private fun permissionStatus(): JSObject = JSObject().apply {
     put("exactAllowed", AlarmScheduler.exactAllowed(activity))
     put("fullScreenAllowed", Build.VERSION.SDK_INT < 34 ||
@@ -46,17 +68,23 @@ class AlarmPlugin(private val activity: Activity) : Plugin(activity) {
 
   @Command
   fun requestExact(invoke: Invoke) {
-    AlarmScheduler.requestExactPermission(activity)
-    invoke.resolve()
+    if (Build.VERSION.SDK_INT < 31 || AlarmScheduler.exactAllowed(activity)) {
+      invoke.resolve()
+      return
+    }
+    openSettings(invoke, Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+      data = Uri.parse("package:${activity.packageName}")
+    }, appSettings())
   }
 
   @Command
   fun requestFullScreen(invoke: Invoke) {
     if (Build.VERSION.SDK_INT >= 34 &&
         !activity.getSystemService(NotificationManager::class.java).canUseFullScreenIntent()) {
-      activity.startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
+      openSettings(invoke, Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT).apply {
         data = Uri.parse("package:${activity.packageName}")
-      })
+      }, appSettings())
+      return
     }
     invoke.resolve()
   }
@@ -65,9 +93,10 @@ class AlarmPlugin(private val activity: Activity) : Plugin(activity) {
   fun requestNotifications(invoke: Invoke) {
     if (Build.VERSION.SDK_INT >= 33 &&
         activity.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-      activity.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+      openSettings(invoke, Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
         putExtra(Settings.EXTRA_APP_PACKAGE, activity.packageName)
-      })
+      }, appSettings())
+      return
     }
     invoke.resolve()
   }

@@ -7,7 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.provider.Settings
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.ZonedDateTime
@@ -26,15 +26,6 @@ internal object AlarmScheduler {
   fun exactAllowed(context: Context): Boolean {
     val manager = context.getSystemService(AlarmManager::class.java)
     return Build.VERSION.SDK_INT < 31 || manager.canScheduleExactAlarms()
-  }
-
-  fun requestExactPermission(context: Context) {
-    if (Build.VERSION.SDK_INT >= 31 && !exactAllowed(context)) {
-      context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
-        data = Uri.parse("package:${context.packageName}")
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-      })
-    }
   }
 
   fun replace(context: Context, alarms: JSONArray) {
@@ -90,15 +81,13 @@ internal object AlarmScheduler {
       if (at > 0) cancelSnooze(context, alarm)
       return
     }
-    if (!exactAllowed(context)) return
     val pending = intent(context, alarm, ACTION_SNOOZE)
-    context.getSystemService(AlarmManager::class.java)
-      .setAlarmClock(AlarmManager.AlarmClockInfo(at, showIntent(context, alarm)), pending)
+    scheduleAt(context, alarm, at, pending)
   }
 
   fun schedule(context: Context, alarm: JSONObject) {
     val days = alarm.optJSONArray("days") ?: return
-    if (!alarm.optBoolean("enabled") || days.length() == 0 || !exactAllowed(context)) return
+    if (!alarm.optBoolean("enabled") || days.length() == 0) return
     val parts = alarm.optString("time").split(":")
     if (parts.size != 2) return
     val hour = parts[0].toIntOrNull() ?: return
@@ -111,18 +100,30 @@ internal object AlarmScheduler {
     }.firstOrNull { it.isAfter(now) && ((monday + java.time.temporal.ChronoUnit.DAYS.between(now.toLocalDate(), it.toLocalDate()).toInt()) % 7) in selected }
       ?: return
     val pending = intent(context, alarm, ACTION_FIRE)
-    val manager = context.getSystemService(AlarmManager::class.java)
-    manager.setAlarmClock(AlarmManager.AlarmClockInfo(next.toInstant().toEpochMilli(), showIntent(context, alarm)), pending)
+    scheduleAt(context, alarm, next.toInstant().toEpochMilli(), pending)
   }
 
   fun snooze(context: Context, alarm: JSONObject) {
     val minutes = alarm.optInt("snoozeMinutes", 0)
-    if (minutes <= 0 || !exactAllowed(context)) return
+    if (minutes <= 0) return
     val pending = intent(context, alarm, ACTION_SNOOZE)
     val at = System.currentTimeMillis() + minutes * 60_000L
     context.getSharedPreferences(PREFS, 0).edit().putLong("snooze_${alarm.optString("id")}", at).apply()
-    context.getSystemService(AlarmManager::class.java)
-      .setAlarmClock(AlarmManager.AlarmClockInfo(at, showIntent(context, alarm)), pending)
+    scheduleAt(context, alarm, at, pending)
+  }
+
+  private fun scheduleAt(context: Context, alarm: JSONObject, at: Long, pending: PendingIntent) {
+    val manager = context.getSystemService(AlarmManager::class.java)
+    if (exactAllowed(context)) {
+      try {
+        manager.setAlarmClock(AlarmManager.AlarmClockInfo(at, showIntent(context, alarm)), pending)
+        return
+      } catch (_: SecurityException) {
+        // The special access can be revoked between checking and scheduling.
+      }
+    }
+    // Still ring if exact access is unavailable; Android may delay this fallback in Doze.
+    manager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
   }
 }
 
@@ -130,13 +131,20 @@ class AlarmReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     when (intent.action) {
       Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_TIME_CHANGED,
-      Intent.ACTION_TIMEZONE_CHANGED, AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED ->
-        AlarmScheduler.restore(context)
+      Intent.ACTION_TIMEZONE_CHANGED, Intent.ACTION_MY_PACKAGE_REPLACED,
+      AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED ->
+        try { AlarmScheduler.restore(context) }
+        catch (error: RuntimeException) { Log.e("SpotDock", "Could not restore alarms", error) }
       AlarmScheduler.ACTION_FIRE, AlarmScheduler.ACTION_SNOOZE -> {
         val alarm = try { JSONObject(intent.getStringExtra(AlarmScheduler.EXTRA_ALARM) ?: "") }
           catch (_: Exception) { return }
         // The next weekly occurrence is registered before the alarm UI starts.
-        if (intent.action == AlarmScheduler.ACTION_FIRE) AlarmScheduler.schedule(context, alarm)
+        if (intent.action == AlarmScheduler.ACTION_FIRE) {
+          try { AlarmScheduler.schedule(context, alarm) }
+          catch (error: RuntimeException) {
+            Log.e("SpotDock", "Could not schedule next alarm occurrence", error)
+          }
+        }
         else context.getSharedPreferences("spotdock_alarms", 0).edit()
           .remove("snooze_${alarm.optString("id")}").apply()
         val service = Intent(context, AlarmService::class.java).apply {
