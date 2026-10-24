@@ -16,6 +16,64 @@ use uuid::Uuid;
 struct AlarmPluginHandle(PluginHandle<tauri::Wry>);
 
 #[cfg(target_os = "android")]
+struct DedicatedModePluginHandle(PluginHandle<tauri::Wry>);
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn dock_mode_status(
+    plugin: tauri::State<'_, DedicatedModePluginHandle>,
+) -> Result<serde_json::Value, String> {
+    plugin
+        .0
+        .run_mobile_plugin("status", ())
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn set_dock_mode(
+    enabled: bool,
+    plugin: tauri::State<'_, DedicatedModePluginHandle>,
+) -> Result<serde_json::Value, String> {
+    plugin
+        .0
+        .run_mobile_plugin("setEnabled", serde_json::json!({ "enabled": enabled }))
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn open_android_wifi(plugin: tauri::State<'_, DedicatedModePluginHandle>) -> Result<(), String> {
+    plugin
+        .0
+        .run_mobile_plugin("openWifi", ())
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn open_android_settings(
+    plugin: tauri::State<'_, DedicatedModePluginHandle>,
+) -> Result<(), String> {
+    plugin
+        .0
+        .run_mobile_plugin("openSystemSettings", ())
+        .map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "android")]
+fn dedicated_mode_plugin() -> TauriPlugin<tauri::Wry> {
+    PluginBuilder::new("dedicated-mode")
+        .setup(|app, api| {
+            let handle =
+                api.register_android_plugin("com.spotdock.mobile", "DedicatedModePlugin")?;
+            app.manage(DedicatedModePluginHandle(handle));
+            Ok(())
+        })
+        .build()
+}
+
+#[cfg(target_os = "android")]
 #[tauri::command]
 fn sync_alarms(
     alarms: serde_json::Value,
@@ -159,7 +217,9 @@ async fn discover_desktop(token: String, previous_host: String) -> Result<Option
 pub fn run() {
     let builder = tauri::Builder::default();
     #[cfg(target_os = "android")]
-    let builder = builder.plugin(alarms_plugin());
+    let builder = builder
+        .plugin(alarms_plugin())
+        .plugin(dedicated_mode_plugin());
     #[cfg(target_os = "android")]
     let builder = builder.invoke_handler(tauri::generate_handler![
         discover_desktop,
@@ -168,7 +228,11 @@ pub fn run() {
         request_alarm_permission,
         request_alarm_full_screen,
         request_alarm_notifications,
-        test_local_alarm
+        test_local_alarm,
+        dock_mode_status,
+        set_dock_mode,
+        open_android_wifi,
+        open_android_settings
     ]);
     #[cfg(not(target_os = "android"))]
     let builder = builder.invoke_handler(tauri::generate_handler![discover_desktop]);

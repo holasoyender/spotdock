@@ -23,6 +23,7 @@ import type { ClockSettings } from "@/localSettings.ts"
 import { MobileClockSettings } from "./MobileClockSettings"
 import { MobileAccentSettings } from "./MobileAccentSettings"
 import { MobileScheduleSettings } from "./MobileScheduleSettings"
+import { MobileDedicatedSettings } from "./MobileDedicatedSettings"
 
 type Props = {
   settings: boolean
@@ -233,6 +234,7 @@ export function MobileSettings({
             paired={paired}
             onChange={onScheduleChange}
           />
+          <MobileDedicatedSettings open={settings} />
           <div className="flex items-center justify-between">
             <Label htmlFor="awake">{t("mobile.settings.keepAwake")}</Label>
             <Switch

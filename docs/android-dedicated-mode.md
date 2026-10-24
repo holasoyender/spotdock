@@ -29,10 +29,18 @@ La APK **debug** (`com.spotdock.mobile.debug`) no declara el filtro de inicio ni
 
 5. Reinicia el teléfono y comprueba que SpotDock vuelve a abrirse solo. Los gestos de Inicio y Recientes no deben sacarte de la aplicación. El teléfono debe permanecer encendido; el horario de SpotDock pone la pantalla negra, pero no apaga físicamente el dispositivo.
 
-El propietario del dispositivo se asigna **una sola vez**. Las actualizaciones posteriores se instalan con `adb install -r` usando el mismo identificador y la misma clave de firma. Conviene configurar la Wi‑Fi, los permisos de cámara y de red local, y la ubicación del tiempo antes de dejar el teléfono sin supervisión.
+El propietario del dispositivo se asigna **una sola vez**. Las actualizaciones posteriores se instalan con `adb install -r` usando el mismo identificador y la misma clave de firma.
+
+## Cambiar la Wi-Fi o hacer mantenimiento
+
+En **Ajustes del dock → Mantenimiento del dispositivo**, toca **Abrir Wi-Fi** para cambiar de red. SpotDock sale temporalmente de la tarea bloqueada mientras usas Ajustes de Android y vuelve a bloquearse al regresar. **Ajustes de Android** abre la configuración completa del teléfono.
+
+Para usar otras aplicaciones, apaga **Bloquear este móvil en SpotDock**. Esta elección se guarda en el teléfono y persiste tras reiniciar; retira la tarea bloqueada y la preferencia de SpotDock como inicio del sistema. Activa el interruptor de nuevo cuando hayas terminado. La APK debug no activa el bloqueo.
 
 ## Recuperación y límites
 
 Si instalas la APK release como launcher sin asignarle la propiedad del dispositivo, puede abrirse al arrancar, pero Android seguirá permitiendo salir y cambiar de aplicación. SpotDock comprueba que es propietario antes de activar el bloqueo; nunca inicia el modo de fijación de pantalla, del que el usuario podría salir.
 
-Con el teléfono administrado, conserva acceso físico y ADB para mantenimiento. Una APK defectuosa o una configuración incorrecta puede dificultar el uso normal del teléfono. La retirada definitiva del propietario de un dispositivo de producción suele requerir un restablecimiento de fábrica; consulta la [documentación de Android](https://developer.android.com/work/dpc/dedicated-devices) antes de administrarlo. Este modo no evita que alguien apague físicamente o restablezca el teléfono mediante mecanismos del sistema o del fabricante.
+Si el móvil sigue con una versión anterior de SpotDock y no puedes abrir sus ajustes de Android, actualiza la APK por USB con ADB mediante el comando del paso 2. `adb install -r` conserva los datos de la aplicación siempre que se use la misma clave de firma. Después podrás usar el nuevo interruptor o **Abrir Wi-Fi**.
+
+Conserva acceso físico y ADB para mantenimiento. Si la APK falla, instala una versión corregida por ADB. Si no hay acceso ADB ni ninguna ruta para abrir Ajustes, la recuperación física del fabricante o un restablecimiento de fábrica pueden ser necesarios; un restablecimiento borra los datos del teléfono. La retirada definitiva del propietario de un dispositivo de producción suele requerir un restablecimiento de fábrica; consulta la [documentación de Android](https://developer.android.com/work/dpc/dedicated-devices) antes de administrarlo. Este modo no evita que alguien apague físicamente o restablezca el teléfono mediante mecanismos del sistema o del fabricante.
