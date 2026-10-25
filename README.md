@@ -2,7 +2,7 @@
 
 Turn an old Android phone into a smart clock companion and connect it to your Windows PC. SpotDock shows a clock and weather forecast, follows your music, runs custom PC actions, forwards selected Windows notifications, and rings alarms on the phones you choose. A phone can also run as a standalone clock, weather display, and alarm clock without a PC.
 
-<div align="center" style="display: flex; flex-direction: column; align-items: center; gap: 1em;">
+<div align="center" style="display: flex; flex-direction: column; align-items: center; gap: 2em;">
 <div>
   <img src="docs/images/clock.png" alt="SpotDock running on a phone beside a Windows PC" width="1246">
   <i align="center">SpotDock running on a phone beside my computer, showing the clock and weather for my city</i>
@@ -17,6 +17,33 @@ Turn an old Android phone into a smart clock companion and connect it to your Wi
 SpotDock consists of a Windows desktop app and an Android app. They pair with a QR code and communicate on your local network. You can connect multiple phones to one PC and place them around a room or home.
 
 The project is open source under the [MIT license](LICENSE). Contributions are welcome; see the [contributor guide](CONTRIBUTING.md) and [security policy](SECURITY.md).
+
+## Install and pair
+
+You can find the latest Windows and Android builds on the [releases page](https://github.com/holasoyender/spotdock/releases). The desktop app is not a signed MSIX package, so Windows may warn about unknown publishers and the notifications won't work until you sign it with your own certificate or follow the [build guide](docs/building.md) to create a signed MSIX. The Android APK is signed with a release key; allow installation from unknown sources if prompted.
+For installing the APK using ADB, run:
+
+```powershell
+adb install -r spotdock.apk
+```
+
+For a source installation, follow the [build guide](docs/building.md). It covers prerequisites, signed Android release builds, Windows installers, and the optional notification-capable MSIX package.
+
+1. Build and install SpotDock Desktop on the Windows PC and the signed Android APK on each production phone, following the [build guide](docs/building.md). Use a debug APK for a separate test phone.
+2. Start the desktop app. Allow access on **private networks** if Windows Firewall asks. If it selects a VPN or other incorrect address, set the PC's Wi-Fi/LAN address in desktop **Settings** so the QR code uses the right IP.
+3. Open SpotDock on the phone and scan the desktop QR code. The phone saves the address and pairing token and reconnects automatically. You can also enter the connection address manually in mobile **Settings**.
+4. Repeat for additional phones. Use desktop **Devices** to give them meaningful names and to test or disconnect each one.
+
+If the PC's IP changes, a paired phone can discover its new address on the LAN. Discovery does not replace an old pairing token: after regenerating the desktop token, scan the new QR code on every phone. Disconnecting a phone removes its saved pairing, while its local settings and alarms remain on that phone.
+
+### Use a phone without a PC
+
+Open mobile **Settings**, choose a weather location, and configure the clock, weather units, accent color, and weekly screen schedule. These settings live on the phone. If you later pair it with a PC, each locally edited group can remain local or be switched back to the shared desktop settings. Alarms also run locally. Music controls, PC actions, and forwarded Windows notifications require the desktop app.
+
+### Optional dedicated mode
+
+For a production dock that starts after reboot and cannot be exited with Home/Recents, follow the [dedicated Android device guide](docs/android-dedicated-mode.md). This requires device-owner provisioning; selecting SpotDock as the launcher alone does not lock the phone. The guide includes Wi-Fi maintenance and recovery steps. Keep a normal debug installation on a test phone.
+
 
 ## What it can do
 
@@ -45,24 +72,6 @@ These are practical recommendations, not benchmarked minimums.
 
 SpotDock is designed for a phone that stays powered on. Its scheduled black view is **not** a hardware power-off or a way to reboot the phone automatically. On Android 17 or later, grant the local network permission when prompted.
 
-## Install and pair
-
-For a source installation, follow the [build guide](docs/building.md). It covers prerequisites, signed Android release builds, Windows installers, and the optional notification-capable MSIX package.
-
-1. Build and install SpotDock Desktop on the Windows PC and the signed Android APK on each production phone, following the [build guide](docs/building.md). Use a debug APK for a separate test phone.
-2. Start the desktop app. Allow access on **private networks** if Windows Firewall asks. If it selects a VPN or other incorrect address, set the PC's Wi-Fi/LAN address in desktop **Settings** so the QR code uses the right IP.
-3. Open SpotDock on the phone and scan the desktop QR code. The phone saves the address and pairing token and reconnects automatically. You can also enter the connection address manually in mobile **Settings**.
-4. Repeat for additional phones. Use desktop **Devices** to give them meaningful names and to test or disconnect each one.
-
-If the PC's IP changes, a paired phone can discover its new address on the LAN. Discovery does not replace an old pairing token: after regenerating the desktop token, scan the new QR code on every phone. Disconnecting a phone removes its saved pairing, while its local settings and alarms remain on that phone.
-
-### Use a phone without a PC
-
-Open mobile **Settings**, choose a weather location, and configure the clock, weather units, accent color, and weekly screen schedule. These settings live on the phone. If you later pair it with a PC, each locally edited group can remain local or be switched back to the shared desktop settings. Alarms also run locally. Music controls, PC actions, and forwarded Windows notifications require the desktop app.
-
-### Optional dedicated mode
-
-For a production dock that starts after reboot and cannot be exited with Home/Recents, follow the [dedicated Android device guide](docs/android-dedicated-mode.md). This requires device-owner provisioning; selecting SpotDock as the launcher alone does not lock the phone. The guide includes Wi-Fi maintenance and recovery steps. Keep a normal debug installation on a test phone.
 
 ## Everyday use
 
