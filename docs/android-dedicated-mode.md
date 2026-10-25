@@ -1,46 +1,44 @@
-# Android como dock dedicado
+# Set up a dedicated Android dock
 
-La APK **release** de SpotDock puede actuar como aplicación de inicio (launcher). Android la abre al arrancar cuando está elegida como inicio predeterminado. Para impedir que se abandone con Inicio o Recientes hace falta además configurar el teléfono como **dispositivo administrado** y ejecutar SpotDock en [modo de tarea bloqueada](https://developer.android.com/work/dpc/dedicated-devices/lock-task-mode). Ser launcher por sí solo no impide salir.
+The **release** APK can act as an Android launcher so SpotDock starts after a reboot. To prevent leaving it with Home or Recents, the phone must also be provisioned as a managed **device owner** and use Android [lock task mode](https://developer.android.com/work/dpc/dedicated-devices/lock-task-mode). Selecting a launcher by itself does not lock the phone.
 
-La APK **debug** (`com.spotdock.mobile.debug`) no declara el filtro de inicio ni el administrador del dispositivo y nunca inicia este modo. Úsala en el teléfono de pruebas.
+The debug package (`com.spotdock.mobile.debug`) does not register a launcher or device administrator and does not start lock task mode. Use it for routine development on a test phone.
 
-## Preparar cada teléfono de producción
+## Prepare each production phone
 
-1. Guarda cualquier dato que necesites del teléfono. La configuración como dispositivo administrado puede exigir un restablecimiento de fábrica si el teléfono ya tiene cuentas o está provisionado. Activa la depuración USB y comprueba con `adb devices` que aparece como `device`.
-2. Genera la APK firmada con `bun run build:android` e instálala en **el teléfono que será dock**:
+1. Back up anything you need from the phone. Device-owner provisioning can require a factory reset if the device is already provisioned or has accounts. Enable USB debugging and confirm `adb devices` lists the phone as `device`. See the [Android Debug Bridge guide](https://developer.android.com/tools/adb) if it does not.
+2. Build a signed release APK with `bun run build:android` as described in the [build guide](building.md). Install it on the phone intended to be a dock:
 
    ```powershell
    adb install -r mobile/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk
    ```
 
-3. Con el teléfono sin cuentas, asígnale SpotDock como propietario mediante ADB:
+3. On an eligible device without user accounts, assign SpotDock as device owner:
 
    ```powershell
    adb shell dpm set-device-owner com.spotdock.mobile/.DockDeviceAdminReceiver
    ```
 
-   Android debe responder `Success`. Si rechaza la orden, no continúes suponiendo que el teléfono está bloqueado: el estado de aprovisionamiento o una cuenta existente pueden impedirla. La [guía oficial de dispositivos dedicados](https://developer.android.com/work/dpc/dedicated-devices/cookbook#development-setup) describe esta vía con ADB para preparar y probar dispositivos sin cuentas. En despliegues gestionados a mayor escala, Android recomienda aprovisionamiento empresarial por QR o un EMM; este repositorio no incluye ese flujo.
+   Confirm Android reports `Success`. If it rejects the command, resolve the provisioning/account state before continuing. Android's [dedicated-device development setup](https://developer.android.com/work/dpc/dedicated-devices/cookbook#development-setup) describes ADB provisioning for testing. This repository does not implement enterprise QR/EMM enrollment.
 
-4. Abre SpotDock una vez para registrar su actividad como inicio preferido y activar el modo de tarea bloqueada:
+4. Open SpotDock once so it can register its preferred Home activity and enable lock task mode:
 
    ```powershell
    adb shell am start -n com.spotdock.mobile/.MainActivity
    ```
 
-5. Reinicia el teléfono y comprueba que SpotDock vuelve a abrirse solo. Los gestos de Inicio y Recientes no deben sacarte de la aplicación. El teléfono debe permanecer encendido; el horario de SpotDock pone la pantalla negra, pero no apaga físicamente el dispositivo.
+5. Reboot and verify SpotDock reopens automatically and Home/Recents cannot leave it. Set your clock, weather, Wi-Fi, and schedule on the phone before placing it in a hard-to-reach mount.
 
-El propietario del dispositivo se asigna **una sola vez**. Las actualizaciones posteriores se instalan con `adb install -r` usando el mismo identificador y la misma clave de firma.
+Assign device ownership only once. Later updates use `adb install -r` with the **same app ID and signing key**. The black screen schedule leaves Android running, connected, and able to ring alarms; it does not power off the device.
 
-## Cambiar la Wi-Fi o hacer mantenimiento
+## Wi-Fi changes and maintenance
 
-En **Ajustes del dock → Mantenimiento del dispositivo**, toca **Abrir Wi-Fi** para cambiar de red. SpotDock sale temporalmente de la tarea bloqueada mientras usas Ajustes de Android y vuelve a bloquearse al regresar. **Ajustes de Android** abre la configuración completa del teléfono.
+In mobile **Settings → Device maintenance**, choose **Open Wi-Fi** to change networks or **Android Settings** for broader device settings. SpotDock temporarily leaves lock task mode for the Settings activity and returns to it afterward.
 
-Para usar otras aplicaciones, apaga **Bloquear este móvil en SpotDock**. Esta elección se guarda en el teléfono y persiste tras reiniciar; retira la tarea bloqueada y la preferencia de SpotDock como inicio del sistema. Activa el interruptor de nuevo cuando hayas terminado. La APK debug no activa el bloqueo.
+To use other apps, turn off **Lock this phone to SpotDock**. The choice persists across reboot and removes the lock task allowlist and preferred Home behavior while disabled. Turn it back on after maintenance. A release install without device-owner provisioning may still open as a launcher, but it cannot enforce lock task mode.
 
-## Recuperación y límites
+## Recovery
 
-Si instalas la APK release como launcher sin asignarle la propiedad del dispositivo, puede abrirse al arrancar, pero Android seguirá permitiendo salir y cambiar de aplicación. SpotDock comprueba que es propietario antes de activar el bloqueo; nunca inicia el modo de fijación de pantalla, del que el usuario podría salir.
+Keep physical access and a working ADB connection for maintenance. If an old SpotDock version lacks the maintenance controls, update it through USB with the same signing key; `adb install -r` keeps application data when Android accepts the update. If the app crashes, install a corrected build through ADB. If ADB is unavailable and no route to Android Settings works, manufacturer recovery or a factory reset may be needed, which erases data. Removing device ownership from a production phone commonly requires a reset; consult the [Android dedicated-device documentation](https://developer.android.com/work/dpc/dedicated-devices/) before provisioning.
 
-Si el móvil sigue con una versión anterior de SpotDock y no puedes abrir sus ajustes de Android, actualiza la APK por USB con ADB mediante el comando del paso 2. `adb install -r` conserva los datos de la aplicación siempre que se use la misma clave de firma. Después podrás usar el nuevo interruptor o **Abrir Wi-Fi**.
-
-Conserva acceso físico y ADB para mantenimiento. Si la APK falla, instala una versión corregida por ADB. Si no hay acceso ADB ni ninguna ruta para abrir Ajustes, la recuperación física del fabricante o un restablecimiento de fábrica pueden ser necesarios; un restablecimiento borra los datos del teléfono. La retirada definitiva del propietario de un dispositivo de producción suele requerir un restablecimiento de fábrica; consulta la [documentación de Android](https://developer.android.com/work/dpc/dedicated-devices) antes de administrarlo. Este modo no evita que alguien apague físicamente o restablezca el teléfono mediante mecanismos del sistema o del fabricante.
+Dedicated mode does not prevent physical power-off or manufacturer recovery. Test the full reboot and maintenance flow on each phone model before depending on it.

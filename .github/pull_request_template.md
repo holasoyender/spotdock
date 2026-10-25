@@ -1,11 +1,18 @@
-## Cambio
+## Summary
 
-Describe el problema y la solución.
+Describe the problem, the solution, and any visible behavior changes.
 
-## Comprobaciones
+## Compatibility and privacy
+
+Note protocol, stored-setting, permission, signing, or migration impacts. Confirm that no secrets or personal data are included.
+
+## Verification
 
 - [ ] `bun run format:check`
 - [ ] `bun run check`
 - [ ] `bun run test`
 - [ ] `bun run build:frontends`
-- [ ] Prueba manual en Windows o Android si el cambio afecta al comportamiento nativo o al aspecto.
+- [ ] Relevant Rust formatting/tests or native build
+- [ ] Manual Windows/Android check for native or visual changes (include sanitized screenshots if useful)
+
+List any checks not run and why.

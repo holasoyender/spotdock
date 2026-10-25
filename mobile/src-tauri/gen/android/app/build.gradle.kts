@@ -99,10 +99,10 @@ if (!releaseSigningReady) {
     tasks.matching { it.name.startsWith("pre") && it.name.endsWith("ReleaseBuild") }.configureEach {
         doFirst {
             throw GradleException(
-                "Firma release incompleta: comprueba spotdock.jks y " +
+                "Release signing is incomplete: check spotdock.jks and " +
                     "mobile/src-tauri/gen/android/keystore.properties. " +
-                    "Configura storePassword y keyPassword (o SPOTDOCK_STORE_PASSWORD y " +
-                    "SPOTDOCK_KEY_PASSWORD). Consulta keystore.properties.example."
+                    "Set storePassword and keyPassword (or SPOTDOCK_STORE_PASSWORD and " +
+                    "SPOTDOCK_KEY_PASSWORD). See keystore.properties.example."
             )
         }
     }

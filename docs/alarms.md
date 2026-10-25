@@ -1,17 +1,15 @@
-# Alarmas de SpotDock
+# Alarms
 
-Las alarmas se pueden editar en **Alarmas** tanto en escritorio como en Android. Se guardan en el ordenador y en cada móvil emparejado. Un móvil sigue ejecutando sus alarmas aunque pierda la conexión con el ordenador: Android las programa en su propio `AlarmManager`. Si se cambia una alarma sin conexión, se sincroniza al reconectar. Cada teléfono usa su propia zona horaria.
+Create and edit alarms from the desktop **Alarms** page or the mobile **Alarms** page. Each alarm can have a time, weekdays, name, optional reminder, tone, vibration, dismissal method, and snooze duration. Choose **All phones** (including phones paired later) or select individual known phones; desktop device names help identify them. Only the desktop page can send a test alarm to a selected connected phone.
 
-En **Sonar en**, la opción «Todos los móviles» incluye los futuros teléfonos emparejados. También se puede elegir uno o varios móviles conocidos. El escritorio conserva sus nombres para poder seleccionar los que estén desconectados. El botón **Enviar alarma de prueba** solo aparece en el escritorio, por cada teléfono conectado.
+Alarms are synchronized between the PC and paired phones. Android schedules each phone's assigned alarms with its own `AlarmManager`, so a scheduled alarm can ring after the phone loses its PC connection. Times use the phone's local time zone. The native integration restores schedules after reboot or app update. A phone's locally stored alarms can also be edited while offline and synchronized when it reconnects.
 
-## Permisos en Android
+## Android permissions and sound
 
-En Android 13 o posterior, SpotDock usa el permiso de despertador `USE_EXACT_ALARM`, que se concede al instalar la aplicación. En Android 12, el botón **Permitir alarmas exactas** abre el ajuste **Alarmas y recordatorios**. Si se revoca ese permiso, la alarma se programa de forma aproximada hasta que se vuelva a conceder; Android puede retrasarla, sobre todo en reposo. Al volver de Ajustes, SpotDock vuelve a programar las alarmas guardadas.
+On Android 13 and later, SpotDock declares `USE_EXACT_ALARM` for its alarm-clock feature. On Android 12, **Allow exact alarms** opens Android's **Alarms & reminders** setting. If exact scheduling is unavailable, SpotDock falls back to an inexact alarm that the system may delay. Returning from the permission screen refreshes the saved alarm schedule. See the [Android alarm documentation](https://developer.android.com/develop/background-work/services/alarms) for platform behavior.
 
-También conviene permitir **alarmas a pantalla completa** para que la pantalla se encienda y muestre los controles cuando la aplicación está en segundo plano. SpotDock pide el permiso de notificaciones al guardar la primera alarma. En un dock administrado, la aplicación sale temporalmente del modo bloqueado al abrir los ajustes de permisos y vuelve a él al regresar.
+Allow full-screen alarm presentation so the native alarm screen can appear over the lock screen or another activity. SpotDock requests notification permission when the first alarm is saved. On a managed dock, it temporarily leaves lock task mode while Android's permission screen is open and resumes afterward.
 
-La opción «Tono del móvil» usa el sonido de alarma configurado en Android. Los tonos **Clásico**, **Suave** y **Urgente** se incluyen en el APK y funcionan sin descargar archivos. La vibración usa el vibrador del teléfono; su intensidad depende de la configuración del sistema.
+**Phone tone** uses the Android alarm sound selected on that device. **Classic**, **Soft**, and **Urgent** are bundled with the APK and require no download. Vibration depends on the device's motor and system settings. Snooze can be off or set to 5, 10, 15, 20, or 30 minutes. Dismissal can be a tap anywhere on the alarm screen or a full left-to-right swipe, depending on that alarm's setting; Snooze is a separate button.
 
-La repetición es semanal. «Posponer» admite 5, 10, 15, 20 o 30 minutos, o se puede desactivar. La pantalla nativa de alarma permite apagarla tocando cualquier parte o mediante un gesto de izquierda a derecha, según la opción de cada alarma. El botón Posponer queda separado de ese gesto.
-
-Después de reiniciar o actualizar la aplicación, Android restaura las alarmas programadas. Las alarmas se disparan aunque SpotDock muestre su pantalla negra programada. El APK debug conserva el comportamiento normal del móvil de pruebas; las alarmas funcionan en ambas variantes.
+The scheduled black dock view does not suspend alarm handling. The alarm screen, sound, and vibration can still activate while SpotDock displays black. For a production dock, test a real alarm both during normal display hours and during the black schedule on that exact phone model. If an alarm does not fire, verify that today's weekday is selected, the phone's clock/time zone is correct, the alarm is enabled and targets that phone, exact-alarm permission is granted where needed, and the operating system has not restricted the app's background behavior.
