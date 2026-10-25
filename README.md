@@ -2,12 +2,16 @@
 
 Turn an old Android phone into a smart clock companion and connect it to your Windows PC. SpotDock shows a clock and weather forecast, follows your music, runs custom PC actions, forwards selected Windows notifications, and rings alarms on the phones you choose. A phone can also run as a standalone clock, weather display, and alarm clock without a PC.
 
-<p align="center">
+<div align="center" style="display: flex; flex-direction: column; align-items: center; gap: 1em;">
+<div>
   <img src="docs/images/clock.png" alt="SpotDock running on a phone beside a Windows PC" width="1246">
-  <p align="center">SpotDock running on a phone beside my computer, showing the clock and weather for my city</p>
+  <i align="center">SpotDock running on a phone beside my computer, showing the clock and weather for my city</i>
+</div>
+<div>
   <img src="docs/images/player.png" alt="Another view of the SpotDock setup, with the spotify player" width="1245">
-  <p align="center">The Spotify player displaying the song im currently playing on my computer, with full controls and track data</p>
-</p>
+  <i align="center">The Spotify player displaying the song im currently playing on my computer, with full controls and track data</i>
+</div>
+</div>
 <br/>
 
 SpotDock consists of a Windows desktop app and an Android app. They pair with a QR code and communicate on your local network. You can connect multiple phones to one PC and place them around a room or home.
