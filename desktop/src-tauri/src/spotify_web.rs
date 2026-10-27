@@ -597,7 +597,7 @@ impl SpotifyWeb {
             })
             .map(|image| image.url.clone())
             .unwrap_or_default();
-        let artwork = self.artwork(&art_url).await;
+        let artwork = self.artwork(&art_url).await.map(Arc::<str>::from);
         let track = Track {
             title: item.name,
             artist: item

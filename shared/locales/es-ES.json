@@ -387,6 +387,8 @@
   "native.mediaUnidentified": "No se pudo identificar la sesión de Spotify; elígela en Ajustes",
   "native.mediaSessionUnavailable": "La sesión multimedia seleccionada ya no está disponible",
   "native.mediaInvalidId": "Identificador de sesión multimedia no válido",
+  "native.mediaBusy": "La sesión multimedia de Windows está ocupada; vuelve a intentarlo en unos segundos",
+  "native.mediaTimedOut": "Windows ha tardado demasiado en responder a la consulta multimedia",
   "native.unsupportedWindowsAction": "Spotify no admite esta acción mediante Windows",
   "native.localWindowsOnly": "La integración local requiere Windows",
   "native.controlsWindowsOnly": "Los controles locales requieren Windows",

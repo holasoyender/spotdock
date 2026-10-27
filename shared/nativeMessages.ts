@@ -14,6 +14,8 @@ exact.set("Device not found", "native.deviceNotFound")
 exact.set("Invalid device", "native.invalidDevice")
 exact.set("Invalid device name", "native.invalidDeviceName")
 exact.set("Invalid test notification", "native.invalidTestNotification")
+exact.set("Windows media session is busy", "native.mediaBusy")
+exact.set("Windows media session timed out", "native.mediaTimedOut")
 
 const patterns: [RegExp, TranslationKey, string][] = [
   [

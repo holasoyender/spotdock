@@ -39,7 +39,7 @@ pub struct Track {
     title: String,
     artist: String,
     album: String,
-    artwork: Option<String>,
+    artwork: Option<Arc<str>>,
     position_ms: i64,
     duration_ms: i64,
     playing: bool,
@@ -289,14 +289,14 @@ async fn get_spotify_status() -> Result<spotify_web::AuthStatus, String> {
 }
 
 #[tauri::command]
-fn get_media_sessions() -> Result<media_source::MediaSources, String> {
-    media::list_sessions()
+async fn get_media_sessions() -> Result<media_source::MediaSources, String> {
+    media::list_sessions().await
 }
 
 #[tauri::command]
-fn set_media_session(source: Option<String>) -> Result<(), String> {
+async fn set_media_session(source: Option<String>) -> Result<(), String> {
     if let Some(id) = &source {
-        let sessions = media::list_sessions()?;
+        let sessions = media::list_sessions().await?;
         if !sessions
             .sessions
             .iter()
@@ -566,16 +566,56 @@ async fn publish(shared: &Shared, app: &AppHandle) {
     let _ = app.emit("spotdock:state", message);
 }
 
-async fn publish_track(shared: &Shared, app: &AppHandle, artwork_changed: bool) {
-    let mut track = serde_json::to_value(&*shared.track.read().await).unwrap_or_default();
-    if !artwork_changed {
-        if let Some(object) = track.as_object_mut() {
-            object.remove("artwork");
-        }
+fn track_update_message(track: &Track, artwork_changed: bool) -> String {
+    let message = if artwork_changed {
+        serde_json::json!({ "kind": "track", "track": track })
+    } else {
+        serde_json::json!({ "kind": "track", "track": {
+            "title": &track.title,
+            "artist": &track.artist,
+            "album": &track.album,
+            "positionMs": track.position_ms,
+            "durationMs": track.duration_ms,
+            "playing": track.playing,
+            "shuffle": track.shuffle,
+            "repeat": &track.repeat,
+            "available": track.available,
+        } })
     }
-    let message = serde_json::json!({ "kind": "track", "track": track }).to_string();
+    .to_string();
+    message
+}
+
+async fn publish_track(shared: &Shared, app: &AppHandle, artwork_changed: bool) {
+    let track = shared.track.read().await;
+    let message = track_update_message(&track, artwork_changed);
     let _ = shared.updates.send(message.clone());
     let _ = app.emit("spotdock:track", message);
+}
+
+#[cfg(test)]
+mod track_update_tests {
+    use super::*;
+
+    #[test]
+    fn position_updates_keep_the_existing_artwork_on_receivers() {
+        let track = Track {
+            artwork: Some(Arc::from("data:image/png;base64,AAAA")),
+            position_ms: 1234,
+            ..Track::default()
+        };
+        let position: serde_json::Value =
+            serde_json::from_str(&track_update_message(&track, false)).unwrap();
+        assert_eq!(position["track"]["positionMs"], 1234);
+        assert!(position["track"].get("artwork").is_none());
+
+        let new_artwork: serde_json::Value =
+            serde_json::from_str(&track_update_message(&track, true)).unwrap();
+        assert_eq!(
+            new_artwork["track"]["artwork"],
+            "data:image/png;base64,AAAA"
+        );
+    }
 }
 
 async fn ws_upgrade(
@@ -800,7 +840,8 @@ pub fn run() {
                         previous_settings = Some(settings.clone());
                     }
                     if settings.enabled && notifications::access() == "allowed" {
-                        match tokio::task::spawn_blocking(move || notifications::read(&settings)).await {
+                        let known_keys = changes.known_keys();
+                        match tokio::task::spawn_blocking(move || notifications::read(&settings, known_keys.as_ref())).await {
                             Ok(Ok(current)) => {
                                 for event in changes.accept(current) {
                                     if let Ok(message) = serde_json::to_string(&event) {
@@ -825,11 +866,13 @@ pub fn run() {
                         Err(error) => (Track::default(), MediaStatus { source: "none".into(), message: Some(error) }),
                     };
                     let shared = app_handle.state::<Arc<Shared>>();
-                    let previous = shared.track.read().await.clone();
+                    let (track_changed, artwork_changed) = {
+                        let previous = shared.track.read().await;
+                        (*previous != next, previous.artwork != next.artwork)
+                    };
                     let media_changed = *shared.media_status.read().await != media_status;
                     if media_changed { *shared.media_status.write().await = media_status; }
-                    if previous != next {
-                        let artwork_changed = previous.artwork != next.artwork;
+                    if track_changed {
                         *shared.track.write().await = next;
                         if !media_changed { publish_track(&shared, &app_handle, artwork_changed).await; }
                     }

@@ -30,22 +30,32 @@ export function SpotifySettingsCard({
   const [sourceError, setSourceError] = useState("")
 
   useEffect(() => {
-    const refresh = () =>
-      invoke<MediaSources>("get_media_sessions")
-        .then((current) => {
+    let active = true
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const refresh = async () => {
+      try {
+        const current = await invoke<MediaSources>("get_media_sessions")
+        if (active) {
           setSources(current)
           setSourceError("")
-        })
-        .catch((cause) => setSourceError(localizeNativeMessage(cause)))
-    refresh()
-    const timer = setInterval(refresh, 4000)
-    return () => clearInterval(timer)
+        }
+      } catch (cause) {
+        if (active) setSourceError(localizeNativeMessage(cause))
+      } finally {
+        if (active) timer = setTimeout(refresh, 4000)
+      }
+    }
+    void refresh()
+    return () => {
+      active = false
+      if (timer) clearTimeout(timer)
+    }
   }, [])
 
   const chooseSource = async (source: string) => {
     try {
       await invoke("set_media_session", { source: source || null })
-      setSources(await invoke<MediaSources>("get_media_sessions"))
+      setSources((current) => ({ ...current, selected: source || null }))
       setSourceError("")
     } catch (cause) {
       setSourceError(localizeNativeMessage(cause))

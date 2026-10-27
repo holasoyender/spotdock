@@ -29,11 +29,17 @@ test("translations, plurals, and native errors switch language", async () => {
   expect(t("desktop.pair.title")).toBe("Conecta tu móvil")
   expect(t("desktop.nav.connectedPhones", { count: 1 })).toBe("1 móvil conectado")
   expect(localizeNativeMessage("Botón no encontrado")).toBe("Botón no encontrado")
+  expect(localizeNativeMessage("Windows media session timed out")).toBe(
+    "Windows ha tardado demasiado en responder a la consulta multimedia",
+  )
 
   await i18n.changeLanguage("en-US")
   expect(t("desktop.pair.title")).toBe("Connect your phone")
   expect(t("desktop.nav.connectedPhones", { count: 2 })).toBe("2 phones connected")
   expect(localizeNativeMessage("Botón no encontrado")).toBe("Button not found")
+  expect(localizeNativeMessage("Windows media session timed out")).toBe(
+    "Windows took too long to respond to the media session request",
+  )
 })
 
 test("preset labels follow the viewer without changing custom button labels", async () => {

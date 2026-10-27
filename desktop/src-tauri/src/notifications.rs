@@ -57,6 +57,10 @@ impl NotificationChanges {
         self.previous = None;
     }
 
+    pub fn known_keys(&self) -> Option<HashSet<String>> {
+        self.previous.clone()
+    }
+
     pub fn accept(&mut self, current: Vec<ObservedNotification>) -> Vec<NotificationEvent> {
         let keys: HashSet<_> = current.iter().map(|item| item.key.clone()).collect();
         let fresh = self.previous.as_ref().map_or_else(Vec::new, |previous| {
@@ -285,6 +289,7 @@ mod windows_listener {
     fn observed(
         notification: UserNotification,
         settings: &NotificationSettings,
+        known_keys: Option<&HashSet<String>>,
     ) -> Option<ObservedNotification> {
         let app_info = notification.AppInfo().ok()?;
         let app_id = app_info.AppUserModelId().ok()?.to_string();
@@ -297,6 +302,11 @@ mod windows_listener {
         }
         let (sender, body) = sender_and_body(&lines, app)?;
         let key = format!("{}:{}:{}:{}", app_id, notification.Id().ok()?, sender, body);
+        let image = if known_keys.is_some_and(|known| !known.contains(&key)) {
+            app_logo(&display)
+        } else {
+            None
+        };
         Some(ObservedNotification {
             key,
             event: NotificationEvent {
@@ -305,12 +315,15 @@ mod windows_listener {
                 app: app.into(),
                 sender,
                 body,
-                image: app_logo(&display),
+                image,
             },
         })
     }
 
-    pub fn read(settings: &NotificationSettings) -> Result<Vec<ObservedNotification>, String> {
+    pub fn read(
+        settings: &NotificationSettings,
+        known_keys: Option<&HashSet<String>>,
+    ) -> Result<Vec<ObservedNotification>, String> {
         let listener = UserNotificationListener::Current().map_err(|error| error.to_string())?;
         if listener
             .GetAccessStatus()
@@ -330,7 +343,7 @@ mod windows_listener {
             .min(200)
         {
             if let Ok(notification) = notifications.GetAt(index) {
-                if let Some(item) = observed(notification, settings) {
+                if let Some(item) = observed(notification, settings, known_keys) {
                     result.push(item);
                 }
             }
@@ -380,6 +393,9 @@ pub async fn request_access(_: tauri::AppHandle) -> Result<&'static str, String>
 }
 
 #[cfg(not(target_os = "windows"))]
-pub fn read(_: &NotificationSettings) -> Result<Vec<ObservedNotification>, String> {
+pub fn read(
+    _: &NotificationSettings,
+    _: Option<&HashSet<String>>,
+) -> Result<Vec<ObservedNotification>, String> {
     Ok(Vec::new())
 }

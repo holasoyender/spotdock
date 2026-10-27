@@ -4,11 +4,60 @@ use std::sync::atomic::{AtomicBool, Ordering};
 static PREFER_WEB: AtomicBool = AtomicBool::new(false);
 
 #[cfg(target_os = "windows")]
+async fn windows_call<T, F>(operation: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    use std::{
+        sync::{
+            OnceLock,
+            mpsc::{SyncSender, sync_channel},
+        },
+        thread,
+        time::Duration,
+    };
+    use windows::Win32::System::WinRT::{RO_INIT_MULTITHREADED, RoInitialize, RoUninitialize};
+    type Job = Box<dyn FnOnce() + Send>;
+    static WORKER: OnceLock<Result<SyncSender<Job>, String>> = OnceLock::new();
+    let sender = WORKER.get_or_init(|| {
+        let (sender, receiver) = sync_channel::<Job>(1);
+        thread::Builder::new()
+            .name("spotdock-windows-media".into())
+            .spawn(move || {
+                if let Err(error) = unsafe { RoInitialize(RO_INIT_MULTITHREADED) } {
+                    log::error!("Could not initialize Windows Runtime for media: {error}");
+                    return;
+                }
+                while let Ok(job) = receiver.recv() {
+                    job();
+                }
+                unsafe { RoUninitialize() };
+            })
+            .map_err(|error| error.to_string())?;
+        Ok(sender)
+    });
+    let sender = sender.as_ref().map_err(Clone::clone)?;
+    let (reply, receive) = tokio::sync::oneshot::channel();
+    // One worker and one queued request cap the damage from a stalled WinRT call.
+    sender
+        .try_send(Box::new(move || {
+            let _ = reply.send(operation());
+        }))
+        .map_err(|_| "Windows media session is busy".to_string())?;
+    tokio::time::timeout(Duration::from_secs(6), receive)
+        .await
+        .map_err(|_| "Windows media session timed out".to_string())?
+        .map_err(|_| "Windows media session is busy".to_string())?
+}
+
+#[cfg(target_os = "windows")]
 mod windows_media {
     use super::*;
     use base64::{Engine, engine::general_purpose::STANDARD};
     use std::{
-        sync::{Mutex, OnceLock},
+        sync::{Arc, Mutex, OnceLock},
+        thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     };
     use windows::{
@@ -16,6 +65,7 @@ mod windows_media {
             Control::{
                 GlobalSystemMediaTransportControlsSession,
                 GlobalSystemMediaTransportControlsSessionManager,
+                GlobalSystemMediaTransportControlsSessionMediaProperties,
                 GlobalSystemMediaTransportControlsSessionPlaybackStatus,
             },
             MediaPlaybackAutoRepeatMode,
@@ -29,6 +79,26 @@ mod windows_media {
             },
         },
     };
+    use windows_future::{AsyncStatus, IAsyncOperation};
+
+    fn join_media<T: windows::core::RuntimeType>(
+        operation: IAsyncOperation<T>,
+    ) -> Result<T, String> {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            if operation.Status().map_err(|error| error.to_string())? != AsyncStatus::Started {
+                let result = operation.GetResults().map_err(|error| error.to_string());
+                let _ = operation.Close();
+                return result;
+            }
+            if Instant::now() >= deadline {
+                let _ = operation.Cancel();
+                let _ = operation.Close();
+                return Err("Windows media session timed out".into());
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+    }
 
     fn spotify_desktop_running() -> bool {
         static CACHE: OnceLock<Mutex<Option<(Instant, bool)>>> = OnceLock::new();
@@ -77,17 +147,99 @@ mod windows_media {
         running
     }
 
+    #[derive(Clone)]
     struct SessionEntry {
         session: GlobalSystemMediaTransportControlsSession,
         details: media_source::MediaSession,
+        media: Option<GlobalSystemMediaTransportControlsSessionMediaProperties>,
+    }
+
+    struct ArtworkCache {
+        source: String,
+        title: String,
+        artist: String,
+        album: String,
+        fetched_at: Instant,
+        artwork: Option<Arc<str>>,
+    }
+
+    static ARTWORK_CACHE: OnceLock<Mutex<Option<ArtworkCache>>> = OnceLock::new();
+    #[derive(Default)]
+    struct ManagerState {
+        manager: Option<GlobalSystemMediaTransportControlsSessionManager>,
+        retry_after: Option<Instant>,
+        failures: u32,
+        last_error: String,
+        spotify_running: bool,
+    }
+
+    impl ManagerState {
+        fn failed(&mut self, error: &str) {
+            self.manager = None;
+            self.failures = self.failures.saturating_add(1);
+            let seconds = match self.failures {
+                1 => 5,
+                2 => 30,
+                3 => 120,
+                4 => 600,
+                _ => 900,
+            };
+            self.retry_after = Some(Instant::now() + Duration::from_secs(seconds));
+            self.last_error = error.into();
+            log::warn!("Windows media session: {error}; retrying in {seconds}s");
+        }
+    }
+
+    static MANAGER: OnceLock<Mutex<ManagerState>> = OnceLock::new();
+
+    fn with_media_manager<T>(
+        operation: impl FnOnce(&GlobalSystemMediaTransportControlsSessionManager) -> Result<T, String>,
+    ) -> Result<T, String> {
+        let cache = MANAGER.get_or_init(|| Mutex::new(ManagerState::default()));
+        let mut state = cache.lock().map_err(|error| error.to_string())?;
+        let running = spotify_desktop_running();
+        if running && !state.spotify_running {
+            state.retry_after = None;
+        }
+        state.spotify_running = running;
+        if state.manager.is_none() {
+            if state
+                .retry_after
+                .is_some_and(|until| until > Instant::now())
+            {
+                return Err(state.last_error.clone());
+            }
+            let requested = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
+                .map_err(|error| error.to_string())
+                .and_then(join_media);
+            match requested {
+                Ok(manager) => {
+                    state.manager = Some(manager);
+                    state.retry_after = None;
+                    state.failures = 0;
+                    state.last_error.clear();
+                }
+                Err(error) => {
+                    state.failed(&error);
+                    return Err(error);
+                }
+            }
+        }
+        let result = operation(
+            state
+                .manager
+                .as_ref()
+                .ok_or_else(|| "Windows media session is busy".to_string())?,
+        );
+        if let Err(error) = &result {
+            state.failed(error);
+        }
+        result
     }
 
     fn available_sessions(preferred: Option<&str>) -> Result<Vec<SessionEntry>, String> {
-        let manager = GlobalSystemMediaTransportControlsSessionManager::RequestAsync()
-            .map_err(|e| e.to_string())?
-            .join()
-            .map_err(|e| e.to_string())?;
-        let sessions = manager.GetSessions().map_err(|e| e.to_string())?;
+        let sessions =
+            with_media_manager(|manager| manager.GetSessions().map_err(|error| error.to_string()))?;
         let mut entries = Vec::new();
         for index in 0..sessions.Size().map_err(|e| e.to_string())? {
             let session = sessions.GetAt(index).map_err(|e| e.to_string())?;
@@ -101,7 +253,7 @@ mod windows_media {
                 session
                     .TryGetMediaPropertiesAsync()
                     .ok()
-                    .and_then(|operation| operation.join().ok())
+                    .and_then(|operation| join_media(operation).ok())
             } else {
                 None
             };
@@ -124,7 +276,11 @@ mod windows_media {
                         .and_then(|info| info.PlaybackStatus().ok())
                         == Some(GlobalSystemMediaTransportControlsSessionPlaybackStatus::Playing),
             };
-            entries.push(SessionEntry { session, details });
+            entries.push(SessionEntry {
+                session,
+                details,
+                media,
+            });
         }
         Ok(entries)
     }
@@ -162,7 +318,7 @@ mod windows_media {
         }
     }
 
-    async fn spotify() -> Result<GlobalSystemMediaTransportControlsSession, String> {
+    fn spotify() -> Result<SessionEntry, String> {
         let selected = media_source::selected();
         let entries = available_sessions(selected.as_deref())?;
         let details: Vec<_> = entries.iter().map(|entry| entry.details.clone()).collect();
@@ -170,7 +326,10 @@ mod windows_media {
             selected.is_none() && !entries.is_empty() && spotify_desktop_running();
         let index = media_source::choose(&details, selected.as_deref(), spotify_running)
             .ok_or_else(|| selection_error(&entries, selected.as_deref()))?;
-        let entry = &entries[index];
+        let entry = entries
+            .get(index)
+            .cloned()
+            .ok_or_else(|| selection_error(&entries, selected.as_deref()))?;
         if !selected
             .as_deref()
             .is_some_and(|id| id.eq_ignore_ascii_case(&entry.details.source))
@@ -181,16 +340,88 @@ mod windows_media {
                 log::warn!("No se pudo guardar la sesión multimedia: {error}");
             }
         }
-        Ok(entry.session.clone())
+        Ok(entry)
     }
 
-    pub async fn read_track() -> Result<Track, String> {
-        let session = spotify().await?;
-        let media = session
-            .TryGetMediaPropertiesAsync()
+    fn artwork(
+        media: &GlobalSystemMediaTransportControlsSessionMediaProperties,
+        source: &str,
+        title: &str,
+        artist: &str,
+        album: &str,
+    ) -> Option<Arc<str>> {
+        let cache = ARTWORK_CACHE.get_or_init(|| Mutex::new(None));
+        if let Ok(guard) = cache.lock() {
+            if let Some(saved) = guard.as_ref().filter(|saved| {
+                saved.source == source
+                    && saved.title == title
+                    && saved.artist == artist
+                    && saved.album == album
+                    && saved.fetched_at.elapsed()
+                        < Duration::from_secs(if saved.artwork.is_some() { 60 } else { 10 })
+            }) {
+                return saved.artwork.clone();
+            }
+        }
+        let loaded = (|| {
+            let reference = media.Thumbnail().ok()?;
+            let stream = join_media(reference.OpenReadAsync().ok()?).ok()?;
+            let size = stream.Size().ok()?.min(2_000_000) as u32;
+            let reader = DataReader::CreateDataReader(&stream).ok()?;
+            join_media(reader.LoadAsync(size).ok()?).ok()?;
+            let mut bytes = vec![0; size as usize];
+            reader.ReadBytes(&mut bytes).ok()?;
+            let mime = if bytes.starts_with(b"\x89PNG") {
+                "image/png"
+            } else if bytes.starts_with(b"GIF8") {
+                "image/gif"
+            } else if bytes.starts_with(b"RIFF") {
+                "image/webp"
+            } else {
+                "image/jpeg"
+            };
+            Some(Arc::from(format!(
+                "data:{mime};base64,{}",
+                STANDARD.encode(bytes)
+            )))
+        })();
+        if let Ok(mut guard) = cache.lock() {
+            *guard = Some(ArtworkCache {
+                source: source.into(),
+                title: title.into(),
+                artist: artist.into(),
+                album: album.into(),
+                fetched_at: Instant::now(),
+                artwork: loaded.clone(),
+            });
+        }
+        loaded
+    }
+
+    pub fn read_track() -> Result<Track, String> {
+        let entry = spotify()?;
+        let session = entry.session;
+        let media = match entry.media {
+            Some(media) => media,
+            None => join_media(
+                session
+                    .TryGetMediaPropertiesAsync()
+                    .map_err(|e| e.to_string())?,
+            )?,
+        };
+        let source = session
+            .SourceAppUserModelId()
             .map_err(|e| e.to_string())?
-            .join()
-            .map_err(|e| e.to_string())?;
+            .to_string();
+        let title = media.Title().map_err(|e| e.to_string())?.to_string();
+        let artist = media
+            .Artist()
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        let album = media
+            .AlbumTitle()
+            .map(|value| value.to_string())
+            .unwrap_or_default();
         let playback = session.GetPlaybackInfo().ok();
         let timeline = session.GetTimelineProperties().ok();
         let repeat = match playback
@@ -234,36 +465,11 @@ mod windows_media {
         } else {
             0
         };
-        let artwork = async {
-            let reference = media.Thumbnail().ok()?;
-            let stream = reference.OpenReadAsync().ok()?.join().ok()?;
-            let size = stream.Size().ok()?.min(2_000_000) as u32;
-            let reader = DataReader::CreateDataReader(&stream).ok()?;
-            reader.LoadAsync(size).ok()?.join().ok()?;
-            let mut bytes = vec![0; size as usize];
-            reader.ReadBytes(&mut bytes).ok()?;
-            let mime = if bytes.starts_with(b"\x89PNG") {
-                "image/png"
-            } else if bytes.starts_with(b"GIF8") {
-                "image/gif"
-            } else if bytes.starts_with(b"RIFF") {
-                "image/webp"
-            } else {
-                "image/jpeg"
-            };
-            Some(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
-        }
-        .await;
+        let artwork = artwork(&media, &source, &title, &artist, &album);
         let track = Track {
-            title: media.Title().map_err(|e| e.to_string())?.to_string(),
-            artist: media
-                .Artist()
-                .map(|value| value.to_string())
-                .unwrap_or_default(),
-            album: media
-                .AlbumTitle()
-                .map(|value| value.to_string())
-                .unwrap_or_default(),
+            title,
+            artist,
+            album,
             artwork,
             position_ms: (base_position_ms + elapsed_ms).clamp(0, duration_ms.max(0)),
             duration_ms,
@@ -282,8 +488,8 @@ mod windows_media {
         Ok(track)
     }
 
-    pub async fn control(action: Control) -> Result<(), String> {
-        let session = spotify().await?;
+    pub fn control(action: Control) -> Result<(), String> {
+        let session = spotify()?.session;
         let operation = match action {
             Control::PlayPause => session.TryTogglePlayPauseAsync(),
             Control::Next => session.TrySkipNextAsync(),
@@ -299,7 +505,7 @@ mod windows_media {
             }),
         }
         .map_err(|e| e.to_string())?;
-        if operation.join().map_err(|e| e.to_string())? {
+        if join_media(operation)? {
             Ok(())
         } else {
             Err("Spotify no admite esta acción mediante Windows".into())
@@ -307,9 +513,9 @@ mod windows_media {
     }
 }
 
-pub fn list_sessions() -> Result<media_source::MediaSources, String> {
+pub async fn list_sessions() -> Result<media_source::MediaSources, String> {
     #[cfg(target_os = "windows")]
-    let sessions = windows_media::list_sessions()?;
+    let sessions = windows_call(windows_media::list_sessions).await?;
     #[cfg(not(target_os = "windows"))]
     let sessions = Vec::new();
     Ok(media_source::MediaSources {
@@ -320,7 +526,7 @@ pub fn list_sessions() -> Result<media_source::MediaSources, String> {
 
 pub async fn read_track() -> Result<(Track, &'static str, Option<String>), String> {
     #[cfg(target_os = "windows")]
-    let local = windows_media::read_track().await;
+    let local = windows_call(windows_media::read_track).await;
     #[cfg(not(target_os = "windows"))]
     let local: Result<Track, String> = Err("La integración local requiere Windows".into());
     match local {
@@ -346,7 +552,7 @@ pub async fn read_track() -> Result<(Track, &'static str, Option<String>), Strin
 pub async fn control(action: Control) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     async fn local(action: Control) -> Result<(), String> {
-        windows_media::control(action).await
+        windows_call(move || windows_media::control(action)).await
     }
     #[cfg(not(target_os = "windows"))]
     async fn local(_: Control) -> Result<(), String> {
