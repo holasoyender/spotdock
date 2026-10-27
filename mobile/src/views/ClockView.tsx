@@ -2,6 +2,7 @@ import { ChevronRight, CloudSun } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { WeatherIcon } from "../components/dock/WeatherIcon"
 import { i18n, t } from "../../../shared/i18n"
+import { useClockFont } from "../../../shared/clockFonts"
 import {
   type DockConfig,
   type Weather,
@@ -35,6 +36,7 @@ export function ClockView({
   onOpenWeather: () => void
   onPair: () => void
 }) {
+  const clockFontFamily = useClockFont(config)
   const time = now.toLocaleTimeString(i18n.resolvedLanguage, {
     hour: "2-digit",
     minute: "2-digit",
@@ -90,6 +92,7 @@ export function ClockView({
         ) : (
           <div
             className={`whitespace-nowrap tabular-nums leading-none text-white ${config.showSeconds || config.hourFormat === "12" ? (config.digitalStyle === "bold" ? "text-[clamp(2.8rem,8vw,7rem)] font-semibold tracking-[-0.065em]" : "text-[clamp(2.8rem,8vw,7rem)] font-light tracking-[-0.04em]") : config.digitalStyle === "bold" ? "text-[clamp(4rem,12vw,11rem)] font-semibold tracking-[-0.075em]" : "text-[clamp(4rem,11vw,10rem)] font-light tracking-[-0.055em]"}`}
+            style={{ fontFamily: clockFontFamily }}
           >
             {time}
           </div>

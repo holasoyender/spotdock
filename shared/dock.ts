@@ -76,6 +76,8 @@ function matchesTranslation(key: TranslationKey, label: string): boolean {
 export type DockConfig = {
   clockStyle: "digital" | "analog"
   digitalStyle: "bold" | "minimal"
+  clockFont: "inter" | "space-grotesk" | "outfit" | "jetbrains-mono" | "custom"
+  customClockFont: { name: string; data: string } | null
   hourFormat: "12" | "24"
   showSeconds: boolean
   showDate: boolean
@@ -121,6 +123,8 @@ export function isScreenOff(schedule: ScreenSchedule | undefined, now: Date): bo
 export const defaultDockConfig: DockConfig = {
   clockStyle: "digital",
   digitalStyle: "bold",
+  clockFont: "inter",
+  customClockFont: null,
   hourFormat: "24",
   showSeconds: false,
   showDate: true,

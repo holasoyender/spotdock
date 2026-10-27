@@ -49,6 +49,10 @@ impl DeckButton {
 pub struct DockConfig {
     pub clock_style: String,
     pub digital_style: String,
+    #[serde(default = "default_clock_font")]
+    pub clock_font: String,
+    #[serde(default)]
+    pub custom_clock_font: Option<CustomClockFont>,
     pub hour_format: String,
     pub show_seconds: bool,
     pub show_date: bool,
@@ -60,6 +64,16 @@ pub struct DockConfig {
     pub buttons: Vec<DeckButton>,
     #[serde(default = "default_screen_schedule")]
     pub screen_schedule: Vec<ScreenDay>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct CustomClockFont {
+    pub name: String,
+    pub data: String,
+}
+
+fn default_clock_font() -> String {
+    "inter".into()
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -121,6 +135,8 @@ impl Default for DockConfig {
         Self {
             clock_style: "digital".into(),
             digital_style: "bold".into(),
+            clock_font: default_clock_font(),
+            custom_clock_font: None,
             hour_format: "24".into(),
             show_seconds: false,
             show_date: true,
@@ -163,11 +179,48 @@ impl DockConfig {
         }
         if !["digital", "analog"].contains(&self.clock_style.as_str())
             || !["bold", "minimal"].contains(&self.digital_style.as_str())
+            || ![
+                "inter",
+                "space-grotesk",
+                "outfit",
+                "jetbrains-mono",
+                "custom",
+            ]
+            .contains(&self.clock_font.as_str())
             || !["12", "24"].contains(&self.hour_format.as_str())
             || !["C", "F"].contains(&self.weather_unit.as_str())
             || !(5..=300).contains(&self.return_after_seconds)
         {
             return Err("Configuración del reloj no válida".into());
+        }
+        if self.clock_font == "custom" && self.custom_clock_font.is_none() {
+            return Err("Configuración del reloj no válida".into());
+        }
+        if let Some(font) = &self.custom_clock_font {
+            use base64::Engine;
+            if font.data.len() > 350_000 {
+                return Err("Configuración del reloj no válida".into());
+            }
+            let Some((mime, encoded)) = font.data.split_once(";base64,") else {
+                return Err("Configuración del reloj no válida".into());
+            };
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .map_err(|_| "Configuración del reloj no válida")?;
+            let valid_signature = match mime {
+                "data:font/woff2" => bytes.starts_with(b"wOF2"),
+                "data:font/woff" => bytes.starts_with(b"wOFF"),
+                "data:font/ttf" => bytes.starts_with(&[0, 1, 0, 0]),
+                "data:font/otf" => bytes.starts_with(b"OTTO"),
+                _ => false,
+            };
+            if font.name.trim().is_empty()
+                || font.name.chars().count() > 80
+                || bytes.len() > 256_000
+                || !valid_signature
+            {
+                return Err("Configuración del reloj no válida".into());
+            }
         }
         if let Some(location) = &self.weather_location {
             if location.name.trim().is_empty()

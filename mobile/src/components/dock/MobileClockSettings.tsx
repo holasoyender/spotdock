@@ -1,9 +1,11 @@
+import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import type { DockConfig } from "../../../../shared/dock"
 import { t } from "../../../../shared/i18n"
+import { clockFonts, readClockFontFile, useClockFont } from "../../../../shared/clockFonts"
 import type { ClockSettings } from "@/localSettings.ts"
 
 const selectClass =
@@ -22,6 +24,8 @@ export function MobileClockSettings({
   onChange: (change: Partial<ClockSettings>) => void
   onReset: () => void
 }) {
+  const [fontError, setFontError] = useState("")
+  const clockFontFamily = useClockFont(config)
   return (
     <details className="rounded-xl border border-white/10 bg-white/3 p-3">
       <summary className="cursor-pointer text-sm font-semibold">
@@ -50,20 +54,94 @@ export function MobileClockSettings({
           </select>
         </div>
         {config.clockStyle === "digital" && (
-          <div className="space-y-1.5">
-            <Label htmlFor="mobile-digital-style">{t("desktop.clock.digitalStyle")}</Label>
-            <select
-              id="mobile-digital-style"
-              className={selectClass}
-              value={config.digitalStyle}
-              onChange={(event) =>
-                onChange({ digitalStyle: event.target.value as ClockSettings["digitalStyle"] })
-              }
-            >
-              <option value="bold">{t("desktop.clock.bold")}</option>
-              <option value="minimal">{t("desktop.clock.minimal")}</option>
-            </select>
-          </div>
+          <>
+            <div className="space-y-1.5">
+              <Label htmlFor="mobile-digital-style">{t("desktop.clock.digitalStyle")}</Label>
+              <select
+                id="mobile-digital-style"
+                className={selectClass}
+                value={config.digitalStyle}
+                onChange={(event) =>
+                  onChange({ digitalStyle: event.target.value as ClockSettings["digitalStyle"] })
+                }
+              >
+                <option value="bold">{t("desktop.clock.bold")}</option>
+                <option value="minimal">{t("desktop.clock.minimal")}</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <Label>{t("desktop.clock.font")}</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {clockFonts.map((font) => (
+                  <button
+                    key={font.id}
+                    type="button"
+                    onClick={() => onChange({ clockFont: font.id })}
+                    aria-pressed={(config.clockFont ?? "inter") === font.id}
+                    className={`rounded-xl border px-3 py-2 text-left ${config.clockFont === font.id || (!config.clockFont && font.id === "inter") ? "border-[var(--dock-accent)] bg-white/10" : "border-white/10 bg-white/3"}`}
+                  >
+                    <span className="block truncate text-xs text-white/60">{font.name}</span>
+                    <span
+                      className="block text-xl tabular-nums"
+                      style={{ fontFamily: font.family }}
+                    >
+                      12:48
+                    </span>
+                  </button>
+                ))}
+                {config.customClockFont && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onChange({ clockFont: "custom", customClockFont: config.customClockFont })
+                    }
+                    aria-pressed={config.clockFont === "custom"}
+                    className={`rounded-xl border px-3 py-2 text-left ${config.clockFont === "custom" ? "border-[var(--dock-accent)] bg-white/10" : "border-white/10 bg-white/3"}`}
+                  >
+                    <span className="block truncate text-xs text-white/60">
+                      {config.customClockFont.name}
+                    </span>
+                    <span
+                      className="block text-xl tabular-nums"
+                      style={{ fontFamily: clockFontFamily }}
+                    >
+                      12:48
+                    </span>
+                  </button>
+                )}
+              </div>
+              <Label
+                htmlFor="mobile-clock-font-file"
+                className="block cursor-pointer text-sm underline underline-offset-4"
+              >
+                {t("desktop.clock.importFont")}
+              </Label>
+              <Input
+                id="mobile-clock-font-file"
+                type="file"
+                accept=".woff2,.woff,.ttf,.otf"
+                className="sr-only"
+                onChange={async (event) => {
+                  const file = event.target.files?.[0]
+                  if (!file) return
+                  try {
+                    const customClockFont = await readClockFontFile(file)
+                    setFontError("")
+                    onChange({ clockFont: "custom", customClockFont })
+                  } catch {
+                    setFontError(t("desktop.clock.fontError"))
+                  }
+                  event.target.value = ""
+                }}
+              />
+              <p className="text-xs text-white/45">{t("desktop.clock.fontHelp")}</p>
+              {fontError && (
+                <p role="alert" className="text-xs text-rose-300">
+                  {fontError}
+                </p>
+              )}
+            </div>
+          </>
         )}
         <div className="space-y-1.5">
           <Label htmlFor="mobile-hour-format">{t("desktop.clock.timeFormat")}</Label>

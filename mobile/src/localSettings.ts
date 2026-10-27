@@ -11,6 +11,8 @@ export type ClockSettings = Pick<
   DockConfig,
   | "clockStyle"
   | "digitalStyle"
+  | "clockFont"
+  | "customClockFont"
   | "hourFormat"
   | "showSeconds"
   | "showDate"
@@ -22,6 +24,8 @@ export type ClockSettings = Pick<
 const clockKeys = [
   "clockStyle",
   "digitalStyle",
+  "clockFont",
+  "customClockFont",
   "hourFormat",
   "showSeconds",
   "showDate",
@@ -40,6 +44,20 @@ export function validClockSettings(value: unknown): value is ClockSettings {
   return (
     (settings.clockStyle === "digital" || settings.clockStyle === "analog") &&
     (settings.digitalStyle === "bold" || settings.digitalStyle === "minimal") &&
+    (settings.clockFont === undefined ||
+      ["inter", "space-grotesk", "outfit", "jetbrains-mono", "custom"].includes(
+        settings.clockFont,
+      )) &&
+    (settings.customClockFont === undefined ||
+      settings.customClockFont === null ||
+      (typeof settings.customClockFont.name === "string" &&
+        settings.customClockFont.name.length <= 80 &&
+        typeof settings.customClockFont.data === "string" &&
+        settings.customClockFont.data.length <= 350_000 &&
+        /^data:font\/(?:woff2|woff|ttf|otf);base64,[A-Za-z0-9+/]+={0,2}$/.test(
+          settings.customClockFont.data,
+        ))) &&
+    (settings.clockFont !== "custom" || Boolean(settings.customClockFont)) &&
     (settings.hourFormat === "12" || settings.hourFormat === "24") &&
     typeof settings.showSeconds === "boolean" &&
     typeof settings.showDate === "boolean" &&
@@ -99,7 +117,9 @@ export function resolveMobileConfig(
   const base = paired ? desktop : defaultDockConfig
   return {
     ...base,
-    ...(localClock ?? {}),
+    ...Object.fromEntries(
+      Object.entries(localClock ?? {}).filter(([, value]) => value !== undefined),
+    ),
     screenSchedule: localSchedule ?? (paired ? base.screenSchedule : defaultScreenSchedule),
   }
 }

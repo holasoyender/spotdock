@@ -10,11 +10,13 @@ import { Segmented } from "./components/desktop/Segmented"
 import { i18n, t } from "../../shared/i18n"
 import { localizeNativeMessage } from "../../shared/nativeMessages"
 import { type DockConfig, type Location } from "../../shared/dock"
+import { clockFonts, readClockFontFile, useClockFont } from "../../shared/clockFonts"
 
 type ChangeConfig = (config: DockConfig) => Promise<void>
 
 function ClockPreview({ config }: { config: DockConfig }) {
   const [now, setNow] = useState(new Date())
+  const clockFontFamily = useClockFont(config)
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(timer)
@@ -58,6 +60,7 @@ function ClockPreview({ config }: { config: DockConfig }) {
       ) : (
         <div
           className={`relative tabular-nums tracking-tight ${config.showSeconds || config.hourFormat === "12" ? (config.digitalStyle === "bold" ? "text-4xl font-semibold" : "text-4xl font-light tracking-wider") : config.digitalStyle === "bold" ? "text-6xl font-semibold" : "text-6xl font-light tracking-widest"}`}
+          style={{ fontFamily: clockFontFamily }}
         >
           {time}
         </div>
@@ -84,6 +87,7 @@ export function ClockSettings({
   const [locations, setLocations] = useState<Location[]>([])
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState("")
+  const [fontError, setFontError] = useState("")
   const patch = (changes: Partial<DockConfig>) => {
     void onChange({ ...config, ...changes }).catch(() => {})
   }
@@ -125,17 +129,94 @@ export function ClockSettings({
               />
             </div>
             {config.clockStyle === "digital" && (
-              <div className="space-y-2">
-                <Label>{t("desktop.clock.digitalStyle")}</Label>
-                <Segmented
-                  value={config.digitalStyle}
-                  options={[
-                    { value: "bold", label: t("desktop.clock.bold") },
-                    { value: "minimal", label: t("desktop.clock.minimal") },
-                  ]}
-                  onChange={(digitalStyle) => patch({ digitalStyle })}
-                />
-              </div>
+              <>
+                <div className="space-y-2">
+                  <Label>{t("desktop.clock.digitalStyle")}</Label>
+                  <Segmented
+                    value={config.digitalStyle}
+                    options={[
+                      { value: "bold", label: t("desktop.clock.bold") },
+                      { value: "minimal", label: t("desktop.clock.minimal") },
+                    ]}
+                    onChange={(digitalStyle) => patch({ digitalStyle })}
+                  />
+                </div>
+                <div className="space-y-3">
+                  <Label>{t("desktop.clock.font")}</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {clockFonts.map((font) => (
+                      <button
+                        key={font.id}
+                        type="button"
+                        onClick={() => patch({ clockFont: font.id })}
+                        aria-pressed={(config.clockFont ?? "inter") === font.id}
+                        className={`rounded-xl border px-3 py-2 text-left transition-colors ${config.clockFont === font.id || (!config.clockFont && font.id === "inter") ? "border-[var(--dock-accent)] bg-white/8" : "border-white/10 hover:border-white/25"}`}
+                      >
+                        <span className="block text-xs text-white/60">{font.name}</span>
+                        <span
+                          className="block text-2xl tabular-nums"
+                          style={{ fontFamily: font.family }}
+                        >
+                          12:48
+                        </span>
+                      </button>
+                    ))}
+                    {config.customClockFont && (
+                      <button
+                        type="button"
+                        onClick={() => patch({ clockFont: "custom" })}
+                        aria-pressed={config.clockFont === "custom"}
+                        className={`rounded-xl border px-3 py-2 text-left transition-colors ${config.clockFont === "custom" ? "border-[var(--dock-accent)] bg-white/8" : "border-white/10 hover:border-white/25"}`}
+                      >
+                        <span className="block truncate text-xs text-white/60">
+                          {config.customClockFont.name}
+                        </span>
+                        <span
+                          className="block text-2xl tabular-nums"
+                          style={{
+                            fontFamily:
+                              config.clockFont === "custom"
+                                ? "'SpotDock Custom Clock', sans-serif"
+                                : undefined,
+                          }}
+                        >
+                          12:48
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                  <Label
+                    htmlFor="clock-font-file"
+                    className="block cursor-pointer text-xs text-white/65 underline underline-offset-4"
+                  >
+                    {t("desktop.clock.importFont")}
+                  </Label>
+                  <Input
+                    id="clock-font-file"
+                    type="file"
+                    accept=".woff2,.woff,.ttf,.otf"
+                    className="sr-only"
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0]
+                      if (!file) return
+                      try {
+                        const customClockFont = await readClockFontFile(file)
+                        setFontError("")
+                        patch({ clockFont: "custom", customClockFont })
+                      } catch {
+                        setFontError(t("desktop.clock.fontError"))
+                      }
+                      event.target.value = ""
+                    }}
+                  />
+                  <p className="text-xs text-white/40">{t("desktop.clock.fontHelp")}</p>
+                  {fontError && (
+                    <p role="alert" className="text-xs text-rose-300">
+                      {fontError}
+                    </p>
+                  )}
+                </div>
+              </>
             )}
             <div className="space-y-2">
               <Label>{t("desktop.clock.timeFormat")}</Label>
